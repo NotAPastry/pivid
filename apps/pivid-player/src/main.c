@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
     int rc = player_args_parse(argc, argv, &args);
     if (rc == 1) { fputs(player_args_usage(), stdout); return 0; }     /* --help */
     if (rc != 0) { fputs(player_args_usage(), stderr); return 2; }     /* bad flag */
-    if (args.show_version) { printf("pivid-player %s\n", BUILD_VERSION); return 0; }
+    if (args.show_version) { printf("pivid-player %s\n%s\n", BUILD_VERSION, PIVID_ATTRIBUTION); return 0; }
 
     /* Switch-only config: args carry built-in defaults + any CLI overrides. */
     bool hw_decode = args.hw_decode;

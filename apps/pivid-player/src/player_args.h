@@ -14,6 +14,7 @@
 #define PLAYER_ARGS_H
 #include <stdbool.h>
 #include <stdint.h>
+#include "attribution.h"   /* PIVID_ATTRIBUTION -- GPL-3.0 s7(b), see LICENSE */
 
 #define PLAYER_DEFAULT_WIN_W      960
 #define PLAYER_DEFAULT_WIN_H      540

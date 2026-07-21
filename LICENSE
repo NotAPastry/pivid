@@ -1,0 +1,157 @@
+PiVid v2.1 — Licensing
+Copyright (C) 2026 Pi <187314265+NotAPastry@users.noreply.github.com>
+
+PiVid is a combined hardware and software project. Most of it is licensed under
+the GNU GPL v3.0-or-later, but the parts that touch the Linux kernel have no
+choice of licence, and the circuit board is licensed separately. This file is
+the authoritative map. Full licence texts live in LICENSES/.
+
+
+================================================================================
+1. SOFTWARE — GNU General Public License v3.0 or later  (GPL-3.0-or-later)
+================================================================================
+
+Applies to the whole repository EXCEPT the paths called out in sections 2, 3,
+4, 5 and 6 below. This covers apps/, common/, scripts/, target/, docs/, the
+top-level Makefile, and all of tests/ other than the files listed in section 2.
+
+Full text: LICENSES/GPL-3.0-or-later.txt
+
+    This program is free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by the Free
+    Software Foundation, either version 3 of the License, or (at your option)
+    any later version.
+
+    This program is distributed in the hope that it will be useful, but
+    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+    for more details.
+
+    You should have received a copy of the GNU General Public License along
+    with this program. If not, see <https://www.gnu.org/licenses/>.
+
+
+ADDITIONAL TERM under section 7(b) of the GNU GPL version 3
+-----------------------------------------------------------
+
+As permitted by section 7(b), the following additional term applies to the
+GPL-3.0-or-later portions of PiVid, and may not be removed:
+
+    You must preserve the author attribution
+
+        PiVid - Copyright (C) 2026 Pi - https://github.com/NotAPastry/pivid
+
+    in the Appropriate Legal Notices displayed by works containing this
+    software. Where the work presents a user interface, an "About" screen, a
+    version banner, or equivalent, the attribution must appear there. In
+    PiVid's own binaries this attribution is carried in the pivid-config-agent
+    web interface and in the --version output; a modified version must not
+    remove or obscure it.
+
+This term requires only the preservation of an existing attribution. It does
+not require attribution in advertising, and it does not restrict any freedom
+granted by the GPL. Under section 7 you may remove this term only from
+material you did not receive under it.
+
+
+================================================================================
+2. KERNEL CODE — GNU General Public License v2.0 only  (GPL-2.0-only)
+================================================================================
+
+    drivers/lr2021/
+    patches/bcm2835-codec-controls.patch
+    patches/bcm2835-codec-intra-refresh-slices.patch
+    patches/bcm2835-codec-resilience-phase2.patch
+    tests/driver/
+    tests/integration/test_frame_sync_fec.c
+
+These are derivative works of the Linux kernel, which is GPL-2.0-only, and
+therefore cannot be relicensed. The lr2021 driver already declares
+MODULE_LICENSE("GPL"). The listed test files #include headers from
+drivers/lr2021/ and inherit that licence.
+
+The GPL-2.0-only driver and the GPL-3.0-or-later userspace are separate
+programs. They communicate only across the kernel/userspace boundary via the
+character device and ioctl interface in common/radio_ioctl.h; they are not
+linked together, and no combined work is formed.
+
+Full text: LICENSES/GPL-2.0-only.txt
+
+
+================================================================================
+3. UAPI BOUNDARY — GNU General Public License v2.0 or later  (GPL-2.0-or-later)
+================================================================================
+
+    common/radio_ioctl.h
+
+This header defines the kernel/userspace ABI and is included from both sides.
+It is licensed v2-or-later so that the GPL-2.0-only driver and the
+GPL-3.0-or-later userspace may each include it without conflict.
+
+
+================================================================================
+4. UPSTREAM PATCH — BSD 2-Clause  (BSD-2-Clause)
+================================================================================
+
+    patches/rpicam-apps-encoder-flags.patch
+
+rpicam-apps is BSD-2-Clause upstream. This patch keeps that licence so it can
+be submitted upstream unchanged.
+
+
+================================================================================
+5. HARDWARE — CERN Open Hardware Licence v2 Permissive  (CERN-OHL-P-2.0)
+================================================================================
+
+    hat/
+
+The PiVid HAT schematic, PCB layout and associated KiCad sources. You may
+manufacture, modify and sell boards based on this design, including in closed
+form; you must retain the copyright and licence notices. See hat/LICENSE.
+
+Full text: LICENSES/CERN-OHL-P-2.0.txt
+
+
+================================================================================
+6. BUNDLED FONT — separately licensed by its author
+================================================================================
+
+    apps/pivid-player/assets/font_btfl_dji.png
+
+The SNEAKY_FPV BTFL_DJI OSD font, Copyright (C) Shannon M Baker (SNEAKY_FPV),
+used here with thanks and credit to its author.
+
+It is licensed by him under the "SNEAKY_FPV HD Font Licence (Community Use)":
+free of charge to the FPV community for personal, non-commercial use; use in
+firmware, hardware, software or commercial products requires his permission
+first. Full terms, and his contact details, are in:
+
+    apps/pivid-player/assets/SNEAKY_FPV_LICENSE.txt
+
+The font is licensed by its author on those terms. The GPL grant in section 1
+covers the PiVid source code and does not extend to it.
+
+
+================================================================================
+7. TRADEMARK
+================================================================================
+
+"PiVid" is the project name of Pi. The licences above grant rights
+in copyright only, not in the name. Forks and derived products must not use
+the name "PiVid", or a name confusingly similar to it, to identify themselves
+without permission. You may of course state accurately that your work is based
+on or derived from PiVid.
+
+
+================================================================================
+8. NOTE FOR DISTRIBUTORS — FFmpeg
+================================================================================
+
+apps/pivid-player links FFmpeg (libavformat, libavcodec, libavutil). Stock
+Debian and Raspberry Pi OS FFmpeg builds are LGPL-2.1-or-later, or
+GPL-2.0-or-later when built with --enable-gpl; both are compatible with
+GPL-3.0-or-later and may be distributed with PiVid.
+
+An FFmpeg built with --enable-nonfree is NOT GPL-compatible. Binaries of
+pivid-player linked against such a build may not be distributed. If you build
+your own FFmpeg, do not enable nonfree components.

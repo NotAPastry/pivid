@@ -1,0 +1,19 @@
+PiVid HAT — hardware design
+Copyright (C) 2026 Pi <187314265+NotAPastry@users.noreply.github.com>
+
+This source describes Open Hardware and is licensed under the CERN-OHL-P v2.
+
+You may redistribute and modify this documentation and make products using it
+under the terms of the CERN-OHL-P v2 (https://ohwr.org/cern_ohl_p_v2.txt).
+This documentation is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY,
+INCLUDING OF MERCHANTABILITY, SATISFACTORY QUALITY AND FITNESS FOR A
+PARTICULAR PURPOSE. Please see the CERN-OHL-P v2 for applicable conditions.
+
+Full licence text: ../LICENSES/CERN-OHL-P-2.0.txt
+
+This is the permissive variant: you may manufacture, modify and sell boards
+based on this design, including in closed form, without publishing your
+changes. You must retain the copyright and licence notices above.
+
+The software that runs on this board is licensed separately — see ../LICENSE.
+"PiVid" is a project name and is not licensed for use by derived products.

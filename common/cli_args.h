@@ -2,6 +2,7 @@
 #define COMMON_CLI_ARGS_H
 #include <stdbool.h>
 #include <stdio.h>
+#include "attribution.h"   /* PIVID_ATTRIBUTION -- GPL-3.0 s7(b), see LICENSE */
 
 /* Common CLI surface shared by the four daemons. The player has its own
  * parser (separate schema) and does not use this. */

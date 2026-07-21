@@ -108,3 +108,18 @@ needs one reboot to pick up the device-tree overlay; see
 - [docs/hardware/gpio.txt](docs/hardware/gpio.txt) — full pin-by-pin wiring table
 - [docs/hidden-env-knobs.md](docs/hidden-env-knobs.md) — environment variables not exposed in the UI
 - [TODO.md](TODO.md) — open work
+
+## Licence
+
+Copyright (C) 2026 Pi.
+
+- **Software** — GPL-3.0-or-later, plus a section 7(b) term requiring that the
+  PiVid attribution be preserved in user-visible notices.
+- **Kernel code** (`drivers/lr2021/`, the `bcm2835-codec` patches, and the tests
+  that include driver headers) — GPL-2.0-only, as Linux derivative works.
+- **Hardware** (`hat/`) — CERN-OHL-P-2.0. Fork it, modify it, sell boards; just
+  keep the notices.
+
+You can sell hardware and products built on PiVid. You cannot ship the software
+in closed form, and you cannot call your fork "PiVid". See [LICENSE](LICENSE) for
+the authoritative per-path map, and a note for distributors about FFmpeg builds.

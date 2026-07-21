@@ -340,7 +340,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (args.show_help)    { cli_print_usage(stdout, "pivid-rx"); return 0; }
-    if (args.show_version) { printf("pivid-rx %s\n", BUILD_VERSION); return 0; }
+    if (args.show_version) { printf("pivid-rx %s\n%s\n", BUILD_VERSION, PIVID_ATTRIBUTION); return 0; }
     if (args.check) {
         char err[128];
         if (settings_check_file(args.config_path, err, sizeof err) != 0) {

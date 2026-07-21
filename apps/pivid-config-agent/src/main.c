@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (args.show_help)    { cli_print_usage(stdout, "pivid-config-agent"); return 0; }
-    if (args.show_version) { printf("pivid-config-agent %s\n", BUILD_VERSION); return 0; }
+    if (args.show_version) { printf("pivid-config-agent %s\n%s\n", BUILD_VERSION, PIVID_ATTRIBUTION); return 0; }
     if (args.check) {
         char err[128];
         if (settings_check_file(args.config_path, err, sizeof err) != 0) {
