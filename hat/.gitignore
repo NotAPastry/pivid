@@ -1,0 +1,46 @@
+# KiCad generated output and local state. Only the design sources are tracked:
+# .kicad_pro / .kicad_sch / .kicad_pcb, the library tables, and the custom
+# symbol/footprint/3D libraries.
+
+# Fabrication output — regenerate from the .kicad_pcb (File > Fabrication Outputs)
+gerber/
+*.gbr
+*.gbrjob
+*.drl
+*.ps
+*-drl_map.*
+*.pos
+*.gtp
+*.gbp
+
+# KiCad auto-backups
+*-backups/
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*.kicad_prl-bak
+_autosave-*
+*.bak
+*~
+
+# Per-user project-local state (window layout, last sheet, selection filters).
+# Not design data — committing it causes pointless churn between machines.
+*.kicad_prl
+
+# Library cache rebuilt by KiCad on open
+fp-info-cache
+*-cache.lib
+*-rescue.lib
+*-rescue.dcm
+
+# Netlists / BOM / reports regenerated from the schematic
+*.net
+*.xml
+*.rpt
+*.dsn
+*.ses
+
+# Editor local-history extensions (these nest a whole second git repo)
+.history/
+
+# macOS
+.DS_Store

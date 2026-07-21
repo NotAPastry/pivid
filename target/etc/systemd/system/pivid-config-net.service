@@ -1,0 +1,23 @@
+[Unit]
+Description=PiVid config-mode network (open AP + captive DHCP/DNS on wlan0)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# KillMode=process is LOAD-BEARING: down() (ExecStop) restores the WiFi client
+# by running `ifup wlan0`, which spawns wpa_supplicant + dhclient INTO this
+# unit's cgroup. With the default KillMode=control-group, systemd SIGTERMs that
+# whole cgroup the instant the oneshot finishes stopping -- killing the
+# just-restored client (hardware-confirmed 2026-06-15: client associated + got
+# its DHCP lease, then was torn down 1s later as the unit deactivated). process
+# mode kills only the (already-exited) main script, leaving the client alive.
+KillMode=process
+ExecStart=/opt/pivid/pivid-config-net.sh up
+# Flag only after a SUCCESSFUL up (oneshot failure skips ExecStartPost); this
+# is what the Plan-1 GPIO LED watches to rapid-blink.
+ExecStartPost=/bin/touch /run/pivid/config-mode
+ExecStop=/opt/pivid/pivid-config-net.sh down
+# Always clear the flag on stop, even if down() partially failed.
+ExecStopPost=/bin/rm -f /run/pivid/config-mode
+StandardOutput=journal
+StandardError=journal

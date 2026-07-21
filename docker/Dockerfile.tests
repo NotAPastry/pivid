@@ -1,0 +1,5 @@
+# pivid-tests: gcc:bookworm + cairo/pkg-config/DejaVu for the host-side OSD renderer unit test (test_osd_render).
+FROM gcc:bookworm
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libcairo2-dev libfreetype-dev pkg-config fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*

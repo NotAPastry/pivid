@@ -1,0 +1,21 @@
+# TEMPLATE -- installed at /opt/pivid/dnsmasq.conf.in. pivid-config-net.sh
+# renders it to /run/pivid/dnsmasq.conf on every `up`, substituting @WLAN_IF@ /
+# @AP_ADDR@ / @DHCP_LO@ / @DHCP_HI@ from its own variables. Editing the rendered
+# file has no effect -- it is overwritten on the next config-mode entry.
+#
+# Config-mode captive DHCP + wildcard DNS. Used ONLY by
+# pivid-config-dnsmasq.service while config mode is active, loaded via
+# `dnsmasq --conf-file=` so the stock /etc/dnsmasq.conf is ignored.
+interface=@WLAN_IF@
+bind-interfaces
+# DHCP pool for clients that join the AP.
+dhcp-range=@DHCP_LO@,@DHCP_HI@,255.255.255.0,12h
+dhcp-option=option:router,@AP_ADDR@
+dhcp-option=option:dns-server,@AP_ADDR@
+# Captive portal: resolve EVERY name to ourselves so the OS captive-probe
+# (captive.apple.com / connectivitycheck.gstatic.com / msftconnecttest.com)
+# reaches the config agent and the config page auto-pops.
+address=/#/@AP_ADDR@
+no-resolv
+no-hosts
+log-dhcp

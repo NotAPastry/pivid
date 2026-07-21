@@ -1,0 +1,19 @@
+[Unit]
+Description=PiVid TX daemon (H.264 over LR2021 radio)
+# Wait for the LR2021 char device. The DT overlay instantiates the device at
+# boot; the module autoload then probes it.
+ConditionPathExists=/dev/radio0
+After=systemd-modules-load.service
+
+[Service]
+Type=exec
+ExecStart=/opt/pivid/pivid-tx --config /opt/pivid/pivid.conf
+Restart=on-failure
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+# All tuning lives in /opt/pivid/pivid.conf (read by pivid-tx via --config); the
+# daemon spawns rpicam-vid itself -- no wrapper script, no per-unit Environment=.
+
+[Install]
+WantedBy=multi-user.target

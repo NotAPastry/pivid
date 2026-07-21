@@ -1,0 +1,148 @@
+# pivid-builder: cross-compile image for the PiVid v2.1 stack.
+#
+# Builds BOTH userspace (aarch64) and the LR2021 kernel module against a pinned
+# Raspberry Pi kernel tree. The deployment model is a frozen DietPi image with
+# a single known kernel -- no DKMS, no on-target compilation, no kernel source
+# on the Pi.
+#
+# Verify the pinned ref matches the target Pi's running kernel BEFORE relying
+# on the produced .ko:
+#   ssh <pi> uname -r                  # e.g. 6.18.29+rpt-rpi-v8
+# then set RPI_KERNEL_GIT_REF below. Accepts a 40-char commit SHA (the
+# default, strictly reproducible), a release tag (e.g. `stable_20250916`),
+# or a branch name (e.g. `rpi-6.18.y`, tracks HEAD -- not reproducible).
+
+FROM debian:trixie
+
+# ---- Build args (override at `docker build`-time if needed) ------------------
+ARG RPI_KERNEL_GIT_REPO=https://github.com/raspberrypi/linux.git
+# 40-char commit hash = byte-exact reproducibility. The Dockerfile's
+# fetch+checkout below accepts SHAs, branch names, or tag names.
+# Current pin: rpi-6.18.y merge of stable/linux-6.18.y, dated 2026-05-11.
+# Produces vermagic 6.18.29+rpt-rpi-v8 -- matches Debian package
+# linux-image-rpi-v8 1:6.18.29-1+rpt1 (trixie, 2026-05-12).
+ARG RPI_KERNEL_GIT_REF=66318c5b5cd8145a662303af12ed39ac07eb27cc
+
+# Pre-built Module.symvers for the matching kernel. Required for CONFIG_MODVERSIONS=y
+# kernels (which the rpt build is): without it, modpost emits an all-zero __versions
+# section, and the runtime modversions check rejects the module with "no symbol
+# version for module_layout" / "Exec format error". We download the arm64 headers
+# .deb at image build time (~435 KB) and lift Module.symvers out of it.
+#
+# URL is intentionally pinned to the same Debian version the running kernel was
+# built from -- '%2b' is URL-encoded '+', and note the filename uses '6.18.29-1+rpt1'
+# without the apt epoch '1:'. When bumping RPI_KERNEL_GIT_REF, bump this URL too.
+ARG RPI_HEADERS_DEB_URL=https://archive.raspberrypi.com/debian/pool/main/l/linux/linux-headers-6.18.29%2brpt-rpi-v8_6.18.29-1%2brpt1_arm64.deb
+
+# ---- Toolchain --------------------------------------------------------------
+# Two compilers required:
+#   - gcc-aarch64-linux-gnu : cross compiler, builds aarch64 userspace + kernel
+#     module proper (with ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-).
+#   - gcc (host)            : HOSTCC for the kernel build's own helper tools
+#     (scripts/basic/fixdep, etc.). Without it `make modules_prepare` fails:
+#       /bin/sh: 1: gcc: not found
+#       HOSTCC  scripts/basic/fixdep
+#
+# The libcairo2-dev / libgstreamer*-dev / gstreamer1.0-plugins-good :arm64
+# packages are for the pivid-rx OSD pipeline (osd_render.c cairo overlay +
+# osd_pipeline.c GStreamer transcode/repacketize): they provide the aarch64
+# .pc files so pkg-config resolves cairo + gstreamer-1.0/app/video for
+# cross-linking, plus cairooverlay + rtph264pay. gstreamer1.0-plugins-good is
+# primarily a RUNTIME dep (included here per spec line 549). The DietPi
+# runtime image MUST also ship gstreamer1.0-plugins-good and a working
+# v4l2h264enc/v4l2h264dec for the OSD transcode path (spec line 549 / Open
+# Items) -- this builder image does NOT provide those at runtime on the Pi.
+# The libsdl2-dev / libavcodec-dev / libavformat-dev / libavutil-dev :arm64
+# packages are for the pivid-player viewer cross-build (SDL2 display output +
+# FFmpeg decode pipeline): they provide the aarch64 .pc files so pkg-config
+# resolves sdl2 + libavcodec/libavformat/libavutil for cross-linking. The
+# DietPi runtime image on the RX Pi must also ship these libs at runtime.
+RUN dpkg --add-architecture arm64 \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+        gcc                                \
+        libc6-dev                          \
+        gcc-aarch64-linux-gnu              \
+        libc6-dev-arm64-cross              \
+        libgpiod-dev:arm64                 \
+        binutils-aarch64-linux-gnu         \
+        libcairo2-dev:arm64                \
+        libsdl2-dev:arm64                  \
+        libavcodec-dev:arm64               \
+        libavformat-dev:arm64              \
+        libavutil-dev:arm64                \
+        libgstreamer1.0-dev:arm64          \
+        libgstreamer-plugins-base1.0-dev:arm64 \
+        gstreamer1.0-plugins-good:arm64    \
+        libavahi-client-dev:arm64          \
+        libavahi-common-dev:arm64          \
+        pkg-config                         \
+        cmake                              \
+        make                               \
+        file                               \
+        bc bison flex libssl-dev libelf-dev \
+        git ca-certificates                \
+        cpio rsync xz-utils                \
+        device-tree-compiler               \
+        wget                               \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+# Append /usr/share/pkgconfig so cairo's arch-independent transitive deps
+# (bzip2 + the legacy X11 proto .pc files) resolve; without it
+# `pkg-config --exists cairo` fails and the player CMake build aborts. These
+# .pc files are arch-neutral, so adding them is cross-safe (the aarch64 dir
+# stays first for real libs).
+ENV PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+ENV PKG_CONFIG_SYSROOT_DIR=/
+
+# ---- Kernel build tree (one-time, ~5 min) -----------------------------------
+# Shallow clone keeps the image lean. modules_prepare generates the build
+# scaffolding (autoconf.h, etc.) needed for out-of-tree module builds; the
+# real Module.symvers comes from the matching headers .deb -- see below.
+#
+# Vermagic alignment: the Pi runs a Debian-packaged kernel whose vermagic is
+# `6.18.29+rpt-rpi-v8`. Reproducing it requires three coordinated inputs:
+#   (a) the exact .config used by the Pi build (./docker/rpi-kernel.config,
+#       extracted from /boot/config-<uname-r> on a running Pi),
+#   (b) a localversion-rpt file in the source tree contributing `+rpt-rpi`
+#       (Debian packaging adds this at build time; upstream rpi-linux does
+#       not ship it),
+#   (c) LOCALVERSION= (empty) in the build env, which suppresses the trailing
+#       `+` that setlocalversion would otherwise emit for a non-tagged HEAD.
+# See scripts/setlocalversion -- the final assembly is:
+#   ${KERNELVERSION}${file_localversion}${config_localversion}${LOCALVERSION}${scm_version}
+ENV ARCH=arm64
+ENV CROSS_COMPILE=aarch64-linux-gnu-
+ENV KDIR=/opt/rpi-linux
+ENV LOCALVERSION=
+
+COPY docker/rpi-kernel.config /tmp/rpi-kernel.config
+
+RUN git init "${KDIR}" \
+ && cd "${KDIR}" \
+ && git remote add origin "${RPI_KERNEL_GIT_REPO}" \
+ && git fetch --depth=1 origin "${RPI_KERNEL_GIT_REF}" \
+ && git checkout --detach FETCH_HEAD \
+ && cp /tmp/rpi-kernel.config "${KDIR}/.config" \
+ && printf '+rpt-rpi' > "${KDIR}/localversion-rpt" \
+ && make olddefconfig \
+ && make modules_prepare \
+ && find . -name '*.o' -delete \
+ && find . -name '*.o.cmd' -delete
+
+# ---- Module.symvers (one-time, ~1 s) ----------------------------------------
+# Pull the matching headers .deb (~435 KB) and lift Module.symvers into the
+# kernel tree. This is what makes the resulting .ko's __versions section
+# carry real symbol CRCs instead of zeros, satisfying CONFIG_MODVERSIONS=y
+# on the running kernel. Sanity-check that it's a non-empty file with a
+# known-good entry; on bad URL we want to fail at image build, not at
+# `modprobe` time on a real Pi.
+RUN wget -q -O /tmp/rpi-headers.deb "${RPI_HEADERS_DEB_URL}" \
+ && dpkg-deb -x /tmp/rpi-headers.deb /tmp/rpi-headers \
+ && cp /tmp/rpi-headers/usr/src/linux-headers-*/Module.symvers "${KDIR}/Module.symvers" \
+ && rm -rf /tmp/rpi-headers /tmp/rpi-headers.deb \
+ && test -s "${KDIR}/Module.symvers" \
+ && grep -qE '\bmodule_layout\b' "${KDIR}/Module.symvers"
+
+WORKDIR /work

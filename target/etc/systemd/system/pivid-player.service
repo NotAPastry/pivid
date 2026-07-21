@@ -1,0 +1,45 @@
+[Unit]
+Description=PiVid local HDMI player (KMSDRM fullscreen viewer)
+# The player subscribes to the local caster at 127.0.0.1. Wants (not Requires)
+# so it still starts and retries if the caster is briefly down.
+After=pivid-caster.service
+Wants=pivid-caster.service
+# KMSDRM takes the DRM master for the HDMI output; stop the tty1 login console
+# so it doesn't fight the player for the display.
+Conflicts=getty@tty1.service
+
+[Service]
+Type=exec
+Environment=SDL_VIDEODRIVER=kmsdrm
+# Pin SDL's 2D render backend to GLES2. Left to auto-select, SDL walks its
+# driver list and can settle on a desktop-GL backend whose fixed-function calls
+# (glEnable(GL_TEXTURE_2D), glTexImage2D with GL_BGRA/GL_UNSIGNED_INT_8_8_8_8_REV)
+# are INVALID on the Pi's GLES-only Mesa/vc4 stack. When that happens every
+# texture upload fails with GL_INVALID_ENUM/GL_INVALID_OPERATION, SDL presents
+# an empty buffer, and the screen is BLACK -- while decode, the caster hop and
+# the KMS page-flips all look perfectly healthy, so nothing in the player log
+# hints at it. Observed on a freshly imaged RX (2026-07-20): 9252 frames decoded,
+# 0 dropped, CRTC active, black screen; forcing opengles2 fixed it instantly
+# (Mesa errors 0, "acquired video" 20119 ms -> 221 ms).
+Environment=SDL_RENDER_DRIVER=opengles2
+# Wait until an HDMI display is actually connected before launching: SDL's
+# KMSDRM backend reports "kmsdrm not available" when no connector is live, so
+# without this the player would crash-loop on a headless receiver. Sitting in
+# ExecStartPre keeps the unit quietly "activating" until a screen is plugged in
+# (then it starts once); TimeoutStartSec=infinity lets that wait exceed 90s.
+ExecStartPre=/bin/sh -c 'until grep -qx connected /sys/class/drm/card*-HDMI*/status 2>/dev/null; do sleep 2; done'
+TimeoutStartSec=infinity
+# --width/--height match the 640x480 prod source: with explicit dims the player
+# switches the CRTC to the closest (smaller) panel mode instead of scanning out
+# at native 1080p, which cuts memory-bus bandwidth that otherwise contends with
+# the radio's SPI-DMA read on the Pi Zero 2 W. (Update these if the TX
+# resolution changes; the video still decodes/scales correctly regardless.)
+ExecStart=/opt/pivid/pivid-player --caster 127.0.0.1 --width 640 --height 480 --fullscreen
+Restart=on-failure
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+# Runs as root for DRM device access, like the other pivid units.
+
+[Install]
+WantedBy=multi-user.target

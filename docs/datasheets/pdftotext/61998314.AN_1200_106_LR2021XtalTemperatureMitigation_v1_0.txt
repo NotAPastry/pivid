@@ -1,0 +1,570 @@
+                                                                     LR2021
+
+
+
+
+                               Application Note: AN1200.106
+
+                             LR2021 Series Crystal Temperature Mitigation
+
+
+
+
+LR2021 Series Crystal Temperature Mitigation                                                   1 of 18
+AN1200.106                        Rev. 1.0                                       Semtech Corporation
+                                  October 2025   www.semtech.com            Proprietary & Confidential
+                   AN1200.106
+
+
+
+
+Table Of Contents of Contents
+1     Introduction .................................................................................................................................................................... 4
+2     Crystal Thermal Frequency Drift ...................................................................................................................................... 5
+    2.1      Origin of the Frequency Drift.................................................................................................................................... 5
+    2.2      Impact ..................................................................................................................................................................... 5
+3     PCB Solutions .................................................................................................................................................................. 7
+    3.1      Reduce Frequency Drift with Standard Cuts .............................................................................................................. 7
+    3.2      Reduce Frequency Drift with Minimized Cuts ........................................................................................................... 8
+    3.3      PLL TX Frequency Drift Measurements ..................................................................................................................... 9
+4     LR2021 Temperature Compensation .............................................................................................................................. 10
+    4.1      Compensation Mechanisms ................................................................................................................................... 10
+    4.2      Implement Frequency Drift Compensation ............................................................................................................. 10
+      4.2.1          Crystal Frequency Temperature Curve ........................................................................................................... 10
+      4.2.2          Required Hardware Configuration.................................................................................................................. 11
+      4.2.3          API Commands for Frequency Compensation ................................................................................................. 12
+    4.3      Performance Results with Compensation ............................................................................................................... 13
+      4.3.1          Frequency Drift Improvement........................................................................................................................ 13
+5     Best Practices and Recommendations............................................................................................................................ 14
+6     Conclusion .................................................................................................................................................................... 15
+7     Glossary ........................................................................................................................................................................ 16
+8     Revision History ............................................................................................................................................................ 17
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                                                                                     2 of 18
+AN1200.106                                  Rev. 1.0                                                                                                         Semtech Corporation
+                                            October 2025                     www.semtech.com                                                          Proprietary & Confidential
+                    AN1200.106
+
+
+
+Table Of Figures
+Figure 1: TX Frequency Drift During LR2021 Transmission .......................................................................................................... 5
+Figure 2: Example of Thermal Insulation (standard cuts) for LR2021........................................................................................... 7
+Figure 3: Wio-LR2021 Module with Minimized cuts (PCB e753v01c) .......................................................................................... 8
+Figure 4: Frequency Drift During 22dBm Transmission ............................................................................................................... 9
+Figure 5: NTC Implementation Example .................................................................................................................................. 11
+Figure 6: TX Frequency Drift Comparison vs Temperature Compensation ................................................................................. 13
+
+
+
+
+Table Of Tables
+Table 1: TX Frequency Drift, Measurement on Two PCB Cuts Dimensions .................................................................................. 9
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                                                                     3 of 18
+AN1200.106                                Rev. 1.0                                                                                             Semtech Corporation
+                                          October 2025                  www.semtech.com                                                  Proprietary & Confidential
+               AN1200.106
+
+
+
+1 Introduction
+The LR2021 is an advanced ultra-low power transceiver designed to operate across both Sub-GHz and 2.4GHz frequency bands,
+supporting a variety of modulation schemes including LoRa®, (G)FSK, FLRC, BPSK, OOK, and LR-FHSS. This versatility allows LR2021
+to support a variety of wireless protocols, running in the host microcontroller, in addition to LoRaWAN: Bluetooth® Low Energy,
+WI-SUN, WM-BUS, and Z-Wave.
+One of the key challenges when operating a radio transceiver at high power output levels is the thermal effect on frequency
+stability. This application note addresses the phenomenon of frequency drift in the LR2021 transceiver during high-power
+transmission, explains its causes, quantifies its effects, and provides recommended mitigation techniques using the built-in
+temperature compensation capabilities of the LR2021 device.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                              4 of 18
+AN1200.106                      Rev. 1.0                                                                    Semtech Corporation
+                                October 2025          www.semtech.com                                  Proprietary & Confidential
+               AN1200.106
+
+
+
+2 Crystal Thermal Frequency Drift
+
+2.1 Origin of the Frequency Drift
+When the LR2021 transmits, especially at high output power, a small but significant amount of heat is generated. This heat is
+due to the power amplifier (PA) efficiency; a portion of the supplied power is converted to RF signal, while the rest is
+dissipated as heat.
+At +22dBm (158mW) output power, the typical current consumption is approximately 105mA. At 3.3V, this results in a total
+power consumption of 363mW. After subtracting the 158mW emitted in the RF signal, around 188mW is dissipated as heat
+in the LR2021.
+This heat dissipation affects the 32MHz crystal oscillator (XOSC) in two ways:
+
+     •    Changes the effective foot capacitance of the on-chip oscillator circuit
+     •    Increases the temperature of the crystal, shifting its resonant frequency
+These effects provoke a shift of the radio frequency during the RF packet transmission, which is particularly concerning for
+long packet durations, as it may cause receive errors if the frequency shifts beyond the receiver's tolerance.
+
+
+
+2.2 Impact
+The LR2021 is capable of delivering up to +22dBm output power for the sub-GHz band. Measurements show that during a
+long LoRa® transmission at +22dBm:
+
+     •    The device and crystal temperatures can increase by several degrees
+     •    Without compensation, the frequency can drift by a few tens of Hertz in the worst cases
+This frequency shift is depicted in Figure 1 for an LR2021 continuous emission at 915MHz and at +22dBm output power during
+a total duration of 45.326 seconds: the frequency drift reaches 90Hz after an emission of 2.2 seconds.
+
+
+
+
+                                  Figure 1: TX Frequency Drift During LR2021 Transmission
+
+The spectrogram display (top plot) shows frequency drift over time, with the red curved trace illustrating the upward
+frequency drift of the 915MHz carrier signal during continuous transmission. The gradual upward bend demonstrates how
+the frequency increases over the 45.326-second measurement period, reaching 90Hz drift after just 2.2 seconds of emission.
+The spectrum analyzer spectrum (bottom plot) shows the power spectral density across frequency, displaying the main carrier
+signal frequency offset between the beginning and the end of the transmission, as shown in the spectrogram above.
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                               5 of 18
+AN1200.106                      Rev. 1.0                                                                     Semtech Corporation
+                                October 2025           www.semtech.com                                  Proprietary & Confidential
+               AN1200.106
+
+
+LoRa® packets using SF12 and BW 125kHz, 10-symbol preamble, and 64-byte payload can last for more than 2 seconds. During
+this time, the frequency drift may exceed the maximum tolerance for reliable demodulation, potentially causing
+demodulation failures.
+This quantification and consequences of this effect are further described in AN1200.37 dedicated to the SX1261/62
+transceivers.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                          6 of 18
+AN1200.106                      Rev. 1.0                                                                Semtech Corporation
+                                October 2025        www.semtech.com                                Proprietary & Confidential
+               AN1200.106
+
+
+
+3 PCB Solutions
+
+3.1 Reduce Frequency Drift with Standard Cuts
+ As for the SX1261/62 or the LR11xx family, a careful PCB design can reduce the heat transfer between the LR2021 and the
+ crystal oscillator, as shown below:
+
+
+
+
+                              Figure 2: Example of Thermal Insulation (standard cuts) for LR2021
+ Standard cuts in the top and other signal layers delay heat propagation from the LR2021 to the crystal oscillator. This
+ adaptation acts as heat insulation to the crystal oscillator.
+
+ Section 3.3 shows the TX frequency variation over time due to self-heating with this thermal insulation.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                               7 of 18
+AN1200.106                      Rev. 1.0                                                                     Semtech Corporation
+                                October 2025            www.semtech.com                                 Proprietary & Confidential
+               AN1200.106
+
+
+
+3.2 Reduce Frequency Drift with Minimized Cuts
+ The LR2021 has an improved thermal behavior which allows the PCB cuts to be minimized, as shown below:
+
+
+
+
+                              Figure 3: Wio-LR2021 Module with Minimized cuts (PCB e753v01c)
+ Minimized cuts in the top and other signal layers delay the heat propagation from the LR2021 to the crystal oscillator,
+ however less efficiently than larger standard cuts. This adaptation acts as heat insulation to the crystal oscillator. Please
+ follow the Wio-LR2021 reference design and copy the PCB layout with crystal 1612 package size (1.6x1.2mm).
+
+ Section 3.3 shows the TX frequency variation due to self-heating over time with this thermal insulation.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                                 8 of 18
+AN1200.106                      Rev. 1.0                                                                       Semtech Corporation
+                                October 2025           www.semtech.com                                    Proprietary & Confidential
+                                      AN1200.106
+
+
+
+3.3 PLL TX Frequency Drift Measurements
+This section shows the frequency drift versus time during a 22dBm continuous transmission (TX CW) at 915MHz.
+The measurements were performed on two module PCB designs (18x21.4mm, connected (unsoldered) to the main host MCU
+board via headers), with the two PCB cuts sizes shown in Figure 2 and Figure 3. Two 32MHz crystals were used: NDK CS06465
+(2x1.6mm) and Rakon FTR5238-A (1.6x1.2mm). A third crystal of 1.6x1.2mm size was also measured on the PCB with the
+small thermal cuts.
+The measurement results are summarized in Table 1 and Figure 4 below:
+
+
+
+
+                           FDRIFT Conditions                                       Standard Cuts        Minimal Cuts            Minimal Cuts
+                                                                  Typical
+                      with                                                         Xtal CS06465       Xtal FTR5238-A0              Xtal #3
+              TX CW 22dBm 915MHz                                   (Hz)
+                                                                                       (Hz)                   (Hz)                   (Hz)
+
+                           Time freq drift 0.5s                   +/- 15.0             12.3                   19.4                   18.7
+                            Time freq drift 1s                    +/- 30.0             22.0                   27.8                   28.7
+                            Time freq drift 2s                    +/- 60.0             54.2                   75.3                   79.8
+                                             Table 1: TX Frequency Drift, Measurement on Two PCB Cuts Dimensions
+
+
+                                                       Frequency Drift During 22dBm Transmission
+                           90.0
+                           80.0
+                           70.0
+
+
+
+
+    Frequency Drift (Hz)
+                           60.0
+                           50.0
+                                                                                                                     Standard cuts, Xtal CS06465
+                           40.0
+                                                                                                                     Minimized cuts, Xtal FTR5238-A0
+                           30.0
+                                                                                                                     Minimized cuts, Xtal #3
+                           20.0
+                           10.0
+                            0.0
+                                  0              0.5               1         1.5              2         2.5
+                                                           Emission Time (seconds)
+
+
+                                                          Figure 4: Frequency Drift During 22dBm Transmission
+
+As expected, the frequency drift measured on the PCB with small ground cuts is larger than with standard cuts. Even on the
+design with small thermal cuts, the frequency shift is around 30Hz/s after one second, which is suitable for successful
+reception by the RX device (Please refer to Semtech Application Notes AN1200.37 Recommendations for Best Performance
+(thermal relief) and AN1200.80: LoRa® Modem Doppler Immunity for additional information).
+In this very minimal radio setup, the heat generated by the PA does not propagate to a larger PCB, as it would for a module
+soldered on a main carrier board or on a chip-down design. As such, this test setup represents the worst-case scenario for
+the thermal drift observable on an LR2021 design.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                                                   9 of 18
+AN1200.106                                             Rev. 1.0                                                                 Semtech Corporation
+                                                       October 2025          www.semtech.com                               Proprietary & Confidential
+                AN1200.106
+
+
+
+4 LR2021 Temperature Compensation
+The LR2021 incorporates advanced temperature compensation mechanisms to mitigate the thermal frequency drift.
+
+
+
+4.1 Compensation Mechanisms
+The LR2021 provides two complementary compensation mechanisms:
+
+     •    Cfine Compensation: the LR2021 embeds a temperature sensor located near the XOSC foot capacitors on the chip.
+          This sensor can be used to adjust the fine tuning capacitors (Cfine) to compensate for temperature-dependent
+          changes in the XOSC load capacitance. This Cfine compensation can be activated using command
+          SetTempCompCfg(…)
+     •    XTAL Compensation: The LR2021 provides an interface for an external Negative Temperature Coefficient (NTC)
+          thermistor to be placed near the crystal on the PCB. This allows for direct monitoring of the crystal's temperature
+          to compensate for the change in the crystal's resonant frequency using a mathematical model of the crystal's S-
+          curve temperature characteristic, based on the external NTC.
+
+
+
+4.2 Implement Frequency Drift Compensation
+
+4.2.1 Crystal Frequency Temperature Curve
+AT-cut crystals typically have an S-shaped frequency vs. temperature characteristic that can be modeled with a third-order
+polynomial:
+ΔF/F = c₁(T-T₀) + c₂(T-T₀)² + c₃(T-T₀)³
+Where:
+
+     •    ΔF/F is the normalized frequency deviation
+     •    T is the current temperature
+     •    T₀ is the reference temperature (typically 25°C)
+     •    c₁, c₂, and c₃ are crystal-specific parameters
+The LR2021 uses this model to predict and compensate for the crystal's frequency drift due to the temperature increase
+during transmission.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                             10 of 18
+AN1200.106                         Rev. 1.0                                                                  Semtech Corporation
+                                   October 2025        www.semtech.com                                  Proprietary & Confidential
+               AN1200.106
+
+
+
+4.2.2 Required Hardware Configuration
+To enable the frequency compensation via an NTC:
+
+    •    Connect an NTC with a nominal β of 4250K to the NTC pin through a resistive divider circuit
+    •    Place the NTC as close as possible to the crystal
+    •    Use proper thermal design to minimize heat transfer from the PA to the crystal, adding thermal insulation between
+         the LR2021 and the crystal (cuts in the ground plane on all layers of the PCB)
+Refer to Figure 5 for an NTC implementation example, extracted from Semtech’s reference design.
+
+
+
+
+                                               Figure 5: NTC Implementation Example
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                          11 of 18
+AN1200.106                      Rev. 1.0                                                                  Semtech Corporation
+                                October 2025            www.semtech.com                              Proprietary & Confidential
+               AN1200.106
+
+
+
+4.2.3 API Commands for Frequency Compensation
+The LR2021 provides several API commands to configure and control frequency drift compensation.
+
+4.2.3.1 SetTempCompCfg
+  The command SetTempCompCfg sets both temperature compensation mechanisms, via Cfine or via the NTC:
+
+     •    Opcode: 0x0132
+     •    Parameters:
+              o Ntc - Enable NTC sensor (1) or disable NTC and enable Cfine (0)
+              o CompMode – Activated Compensation mode
+                       ▪  0: Disabled
+                       ▪  1: Relative mode
+                       ▪  2: Absolute mode
+Relative mode compensates for the temperature difference between the beginning and the end of the RF packet
+transmission, which is the preferred approach when it is intended to compensate for the device’s self-heating due to packets
+transmission.
+Absolute mode compensates for any difference in temperature measurements. It is therefore more sensitive to any offset in
+temperature measurement.
+Cfine compensation is set when one of the compensation modes is activated and the NTC sensor is disabled.
+
+4.2.3.2 SetNtcParams
+The command SetNtcParams configures the NTC parameters.
+
+     •    Opcode: 0x0133
+     •    Parameters:
+              o ntc_r_ratio – NTC resistance bias ratio (10-bit value)
+              o ntcbeta - NTC beta value (12-bit value)
+              o delay - First order filter delay
+ntc_r_ratio is the ratio between the bias resistor and NTC resistance at 25°C. It is recommended to set ntc_r_ratio=1.
+Ntcbeta is the NTC beta coefficient, taken from the NTC specifications (nominal value around 4250 Ohm).
+Since the NTC is physically separated from the 32MHz crystal on the PCB, there is a short time interval until the heat generated
+by the device self-heating gets propagated to the crystal or to the NTC. Delay compensates for this time interval and is PCB
+dependent. The value Delay=5 , corresponding to 100ms, has been determined as optimal on Semtech’s reference design,
+and is therefore applicable for all exactly similar designs.
+
+4.2.3.3 SetXoscCpTrim
+The command SetXoscCpTrim can configure the internal loading capacitors to tune the absolute crystal oscillation frequency,
+in case there is a difference from exactly 32.000MHz due to wrong loading capacitance value. It does not compensate the
+crystal frequency drift due to the device self heating.
+
+          •    Opcode: 0x0131
+          •    Parameters:
+               o xta - XTA foot capacitor trimming (6-bit value). 0 = 11.3pF, max = 47 = 33.4pF, 1 LSB=0.47pF
+               o xtb - XTB foot capacitor trimming (6-bit value). 0 = 11.3pF, max = 47 = 33.4pF, 1 LSB=0.47pF
+               o additional_start_time - Additional delay for XTAL start-up.
+additional_start_time is an optional parameter which adds an additional delay in us for XTAL starting (RC->XSOC mode) to
+allow a better stabilization of XTAL. If not set, the previous value is kept. By default additional_start_time =0.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                               12 of 18
+AN1200.106                       Rev. 1.0                                                                      Semtech Corporation
+                                 October 2025           www.semtech.com                                   Proprietary & Confidential
+               AN1200.106
+
+
+
+
+4.3 Performance Results with Compensation
+
+4.3.1 Frequency Drift Improvement
+The following measurement results show the TX frequency drift during an SF12 BW LoRa packet transmission at 915MHz on
+the same PCB, for three different conditions: no temperature compensation, Cfine only compensation, and full compensation
+(Cfine + NTC).
+
+
+
+
+                          Figure 6: TX Frequency Drift Comparison vs Temperature Compensation
+
+With proper compensation enabled, the following improvements are observed:
+
+    •    Without Compensation (orange curve), the frequency drift can exceed 100Hz during a long LoRa® packet (SF12, BW
+         62.5 kHz), potentially resulting in demodulation errors.
+    •    With Cfine Compensation only (green curve), the drift is reduced to 61Hz, but still has the same trend as without
+         compensation, showing that Cfine compensation attenuates the frequency drift but does not compensate it
+         completely.
+    •    With Full Compensation (Cfine + Xtal via NTC, blue curve), the frequency drift is reduced to 57Hz. The upward
+         frequency variation results from an overcompensation mechanism, proving that the NTC compensation is able to
+         correct entirely the frequency drift.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                          13 of 18
+AN1200.106                      Rev. 1.0                                                                  Semtech Corporation
+                                October 2025         www.semtech.com                                 Proprietary & Confidential
+               AN1200.106
+
+
+
+5 Best Practices and Recommendations
+Always enable temperature compensation for applications that have high power (>14dBm) and long packet durations.
+Use the DC-DC converter configuration when possible, as it reduces overall power consumption and heat generation.
+During PCB design, consider thermal insulation between the LR2021 and the crystal, for ground plane cuts and strategic
+component placement.
+Cfine compensation allows to largely reduce the thermal drift, but for applications requiring maximum frequency stability,
+enable both Cfine and NTC compensation mechanisms simultaneously to obtain the highest thermal correction, typically an
+80-90% drift reduction compared to uncompensated operation.
+At temperatures below -20°C or above 70°C, the crystal's frequency deviation is more pronounced. In these cases, it is
+recommended to use a common Temperature Compensated Crystal Oscillator (TCXO). A TCXO is also recommended if the
+frequency precision requirement is beyond the crystal specifications (e.g. for low bandwidth, or for Round Trip Time of Flight
+device to device ranging).
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                              14 of 18
+AN1200.106                      Rev. 1.0                                                                     Semtech Corporation
+                                October 2025           www.semtech.com                                  Proprietary & Confidential
+               AN1200.106
+
+
+
+6 Conclusion
+Frequency drift due to thermal effects is an inherent challenge in high-power RF transmitters like the LR2021. However, with
+the advanced temperature compensation features available in the device, this effect can be effectively mitigated, ensuring
+reliable communications even with challenging configurations and long packet durations.
+By following the guidelines in this application note and implementing the appropriate compensation mechanisms, designers
+can achieve optimal performance from the LR2021 transceiver across a wide range of operating conditions.
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                            15 of 18
+AN1200.106                      Rev. 1.0                                                                    Semtech Corporation
+                                October 2025          www.semtech.com                                  Proprietary & Confidential
+               AN1200.106
+
+
+
+7 Glossary
+          Term                                                            Description
+
+API                          Application Programming Interface
+BW                           Bandwidth
+Cfine                        Fine Tuning Capacitors
+DC-DC                        Direct Current to Direct Current Converter
+FLRC                         Fast Long Range Communication
+(G) FSK                      (Gaussian) Frequency Shift Keying
+(G) MSK                      (Gaussian) Minimum Shift Keying
+                             Long Range Communication
+LoRa®
+                             the LoRa® Mark is a registered trademark of the Semtech Corporation
+LoRaWAN®                     Long Range Wide Area Network
+MCU                          MicroController Unit
+NTC                          Negative Temperature Coefficient
+OOK                          On–Off Keying
+OQPSK                        Offset Quadrature Phase-Shift Keying
+PA                           Power Amplifier
+PLL                          Phase-Locked Loop
+PCB                          Printed Circuit Board
+RF                           Radio Frequency
+RX                           Receiver / Receive
+SF                           Spreading Factor
+TCXO                         Temperature Compensated Crystal Oscillator
+Tx                           Transmitter / Transmit
+                             Wireless version of M-Bus, which is a European standard (EN 13757) that describes remote meter
+WM-Bus
+                             reading systems
+XOSC                         Crystal Oscillator
+Xtal                         Crystal
+WI-SUN                       Wireless Smart Utility Network
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                         16 of 18
+AN1200.106                      Rev. 1.0                                                                 Semtech Corporation
+                                October 2025          www.semtech.com                               Proprietary & Confidential
+               AN1200.106
+
+
+
+8 Revision History
+Version        ECO                  Date                         Changes and/or Modifications
+
+
+   1.0        076678            August 2025                             Initial Release
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                               17 of 18
+AN1200.106                      Rev. 1.0                                                        Semtech Corporation
+                                October 2025   www.semtech.com                            Proprietary & Confidential
+               AN1200.106
+
+
+
+
+                                           Important Notice
+                                           Information relating to this product and the application or design described herein
+                                           is believed to be reliable, however such information is provided as a guide only
+                                           and Semtech assumes no liability for any errors in this document, or for the
+                                           application or design described herein.
+                                           Semtech reserves the right to make changes to the product or this document at
+                                           any time without notice. Buyers should obtain the latest relevant information
+                                           before placing orders and should verify that such information is current and
+                                           complete. Semtech warrants performance of its products to the specifications
+                                           applicable at the time of sale, and all sales are made in accordance with
+                                           Semtech’s standard terms and conditions of sale.
+                                           SEMTECH PRODUCTS ARE NOT DESIGNED, INTENDED, AUTHORIZED OR
+                                           WARRANTED TO BE SUITABLE FOR USE IN LIFE-SUPPORT APPLICATIONS,
+                                           DEVICES OR SYSTEMS, OR IN NUCLEAR APPLICATIONS IN WHICH THE FAILURE
+                                           COULD BE REASONABLY EXPECTED TO RESULT IN PERSONAL INJURY, LOSS OF
+                                           LIFE OR SEVERE PROPERTY OR ENVIRONMENTAL DAMAGE. INCLUSION OF
+                                           SEMTECH PRODUCTS IN SUCH APPLICATIONS IS UNDERSTOOD TO BE
+                                           UNDERTAKEN SOLELY AT THE CUSTOMER’S OWN RISK.
+                                           Should a customer purchase or use Semtech products for any such unauthorized
+                                           application, the customer shall indemnify and hold Semtech and its officers,
+                                           employees, subsidiaries, affiliates, and distributors harmless against all claims,
+                                           costs damages and attorney fees which could arise.
+                                           The Semtech name and logo are registered trademarks of the Semtech
+                                           Corporation. All other trademarks and trade names mentioned may be marks and
+                                           names of Semtech or their respective companies. Semtech reserves the right to
+                                           make changes to, or discontinue any products described in this document without
+                                           further notice. Semtech makes no warranty, representation or guarantee, express
+                                           or implied, regarding the suitability of its products for any particular purpose. All
+                                           rights reserved.
+                                           © Semtech 2025
+
+
+
+
+LR20xx Series Crystal Temperature Mitigation                                                                                18 of 18
+AN1200.106                      Rev. 1.0                                                                        Semtech Corporation
+                                October 2025             www.semtech.com                                   Proprietary & Confidential
+

@@ -1,0 +1,1 @@
+root=/dev/mmcblk0p2 rootfstype=ext4 rootwait fsck.repair=yes net.ifnames=0 logo.nologo quiet loglevel=3 console=tty1 cma=128M

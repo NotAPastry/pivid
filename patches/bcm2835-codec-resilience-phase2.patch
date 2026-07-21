@@ -1,0 +1,296 @@
+diff --git a/drivers/staging/vc04_services/bcm2835-codec/bcm2835-v4l2-codec.c b/drivers/staging/vc04_services/bcm2835-codec/bcm2835-v4l2-codec.c
+index 903cb88d8..776510976 100644
+--- a/drivers/staging/vc04_services/bcm2835-codec/bcm2835-v4l2-codec.c
++++ b/drivers/staging/vc04_services/bcm2835-codec/bcm2835-v4l2-codec.c
+@@ -44,6 +44,23 @@
+ 
+ MODULE_IMPORT_NS("DMA_BUF");
+ 
++/* --- Phase-2 trial: custom resilience controls (private CID range) --- */
++#define PIVID_CID_BASE			(V4L2_CID_USER_BASE + 0x2000)
++#define PIVID_CID_EEDE_ENABLE		(PIVID_CID_BASE + 0)
++#define PIVID_CID_EEDE_LOSSRATE		(PIVID_CID_BASE + 1)
++#define PIVID_CID_DROPPABLE_PFRAMES	(PIVID_CID_BASE + 2)
++#define PIVID_CID_DROPPABLE_PFRAME_LEN	(PIVID_CID_BASE + 3)
++#define PIVID_CID_SEI_ENABLE		(PIVID_CID_BASE + 4)
++#define PIVID_CID_FRAME_LIMIT_BITS	(PIVID_CID_BASE + 5)
++#define PIVID_CID_PEAK_RATE		(PIVID_CID_BASE + 6)
++#define PIVID_CID_DEBLOCK_IDC		(PIVID_CID_BASE + 7)
++#define PIVID_CID_AU_DELIMITERS		(PIVID_CID_BASE + 8)
++#define PIVID_CID_SEPARATE_NAL_BUFS	(PIVID_CID_BASE + 9)
++#define PIVID_CID_REFRESH_MODE		(PIVID_CID_BASE + 10)
++#define PIVID_CID_REFRESH_AIR_MBS	(PIVID_CID_BASE + 11)
++#define PIVID_CID_VCL_HRD		(PIVID_CID_BASE + 12)
++#define PIVID_CID_LOW_DELAY_HRD		(PIVID_CID_BASE + 13)
++
+ /*
+  * Default /dev/videoN node numbers for decode and encode.
+  * Deliberately avoid the very low numbers as these are often taken by webcams
+@@ -722,6 +739,11 @@ struct bcm2835_codec_ctx {
+ 	/* Source and destination queue data */
+ 	struct bcm2835_codec_q_data   q_data[2];
+ 	s32  bitrate;
++	u32  slice_mode;	/* last V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE value */
++	u32  slice_max_mb;	/* last V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB value */
++	u32  refresh_mode;	/* PIVID_CID_REFRESH_MODE; 0 = CYCLIC (Phase-1 default) */
++	u32  refresh_air_mbs;	/* PIVID_CID_REFRESH_AIR_MBS; used when mode = ADAPTIVE/BOTH */
++	u32  refresh_period;	/* last intra_refresh_period; cached so any setter re-applies */
+ 	unsigned int	framerate_num;
+ 	unsigned int	framerate_denom;
+ 
+@@ -2260,6 +2282,56 @@ static int bcm2835_codec_set_level_profile(struct bcm2835_codec_ctx *ctx,
+ 	return ret;
+ }
+ 
++/* Phase-2: set a firmware MMAL param whose body is a single u32 (booleans too). */
++static int pivid_set_u32(struct bcm2835_codec_ctx *ctx, u32 mmal_id, u32 val)
++{
++	if (!ctx->component)
++		return 0;	/* applied again on the next set once streaming */
++	return vchiq_mmal_port_parameter_set(ctx->dev->instance,
++			&ctx->component->output[0], mmal_id, &val, sizeof(val));
++}
++
++/* Phase-2: (re)apply intra-refresh from cached mode/air/period. Called by the period,
++ * mode, and air setters, so userland set-order is irrelevant. */
++static int pivid_apply_intra_refresh(struct bcm2835_codec_ctx *ctx)
++{
++	struct bcm2835_codec_q_data *q = &ctx->q_data[V4L2_M2M_SRC];
++	u32 mbw = DIV_ROUND_UP(q->crop_width, 16);
++	u32 mbh = DIV_ROUND_UP(q->crop_height, 16);
++	struct mmal_parameter_video_intra_refresh ir;
++	u32 len = sizeof(ir), rows;
++
++	BUILD_BUG_ON(sizeof(ir) != 20);	/* 5 x u32; header added by mmal layer */
++	if (!ctx->component || !mbw || !mbh)
++		return 0;		/* geometry unset; re-applied on the next set */
++	memset(&ir, 0, sizeof(ir));
++	/* get-then-set: preserve firmware defaults for fields we don't drive. */
++	(void)vchiq_mmal_port_parameter_get(ctx->dev->instance,
++		&ctx->component->output[0],
++		MMAL_PARAMETER_VIDEO_INTRA_REFRESH, &ir, &len);
++	switch (ctx->refresh_mode) {	/* 0=CYCLIC 1=ADAPTIVE 2=BOTH 3=CYCLIC_MROWS */
++	case 1:  ir.refresh_mode = MMAL_VIDEO_INTRA_REFRESH_ADAPTIVE; break;
++	case 2:  ir.refresh_mode = MMAL_VIDEO_INTRA_REFRESH_BOTH; break;
++	case 3:  ir.refresh_mode = MMAL_VIDEO_INTRA_REFRESH_CYCLIC_MROWS; break;
++	default: ir.refresh_mode = MMAL_VIDEO_INTRA_REFRESH_CYCLIC; break;
++	}
++	/* MB-row-aligned cir_mbs, >= 2 rows so cir_mbs > mbw (firmware requirement). */
++	if (ctx->refresh_period) {
++		rows = DIV_ROUND_UP(mbh, ctx->refresh_period);
++		if (rows < 2)
++			rows = 2;
++		ir.cir_mbs = rows * mbw;
++	} else {
++		ir.cir_mbs = 0;
++	}
++	ir.air_mbs = ctx->refresh_air_mbs;	/* 0 unless ADAPTIVE/BOTH */
++	ir.air_ref = ctx->refresh_air_mbs ? 1 : 0;
++	ir.pir_mbs = 0;
++	return vchiq_mmal_port_parameter_set(ctx->dev->instance,
++		&ctx->component->output[0],
++		MMAL_PARAMETER_VIDEO_INTRA_REFRESH, &ir, sizeof(ir));
++}
++
+ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
+ {
+ 	struct bcm2835_codec_ctx *ctx =
+@@ -2392,6 +2464,96 @@ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
+ 						    sizeof(mmal_bool));
+ 		break;
+ 	}
++	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE:
++	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB: {
++		struct bcm2835_codec_q_data *q = &ctx->q_data[V4L2_M2M_SRC];
++		u32 mbs_wide = DIV_ROUND_UP(q->crop_width, 16);
++		u32 mb_rows;
++
++		if (ctrl->id == V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE)
++			ctx->slice_mode = ctrl->val;
++		else
++			ctx->slice_max_mb = ctrl->val;
++
++		if (!ctx->component)
++			break;
++		/*
++		 * Geometry may be unset if controls are applied before S_FMT.
++		 * mbs_wide==0 would make the MAX_MB divide below undefined
++		 * (on aarch64 UDIV-by-0 returns 0 rather than trapping, so this
++		 * is a wrong-value guard, not a panic guard). Bail; the control
++		 * value is already cached above and re-applied on the next set.
++		 */
++		if (!mbs_wide)
++			break;
++		if (ctx->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE) {
++			mb_rows = 0;                 /* 0 = one slice/frame */
++		} else if (ctx->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB) {
++			if (q->crop_width > 1280) {
++				v4l2_warn(&ctx->dev->v4l2_dev,
++					  "slices unsupported for width>1280; ignoring\n");
++				break;
++			}
++			mb_rows = ctx->slice_max_mb ?
++				  DIV_ROUND_UP(ctx->slice_max_mb, mbs_wide) : 0;
++		} else { /* MAX_BYTES — MMAL has no byte mode */
++			ret = -EINVAL;
++			break;
++		}
++		ret = vchiq_mmal_port_parameter_set(ctx->dev->instance,
++				&ctx->component->output[0],
++				MMAL_PARAMETER_MB_ROWS_PER_SLICE,
++				&mb_rows, sizeof(mb_rows));
++		break;
++	}
++	case V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD:
++		ctx->refresh_period = ctrl->val;
++		ret = pivid_apply_intra_refresh(ctx);
++		break;
++	case PIVID_CID_REFRESH_MODE:
++		ctx->refresh_mode = ctrl->val;
++		ret = pivid_apply_intra_refresh(ctx);
++		break;
++	case PIVID_CID_REFRESH_AIR_MBS:
++		ctx->refresh_air_mbs = ctrl->val;
++		ret = pivid_apply_intra_refresh(ctx);
++		break;
++	case PIVID_CID_VCL_HRD:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_ENCODE_H264_VCL_HRD_PARAMETERS, ctrl->val);
++		break;
++	case PIVID_CID_LOW_DELAY_HRD:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_ENCODE_H264_LOW_DELAY_HRD_FLAG, ctrl->val);
++		break;
++	case PIVID_CID_EEDE_ENABLE:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_EEDE_ENABLE, ctrl->val);
++		break;
++	case PIVID_CID_EEDE_LOSSRATE:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_EEDE_LOSSRATE, ctrl->val);
++		break;
++	case PIVID_CID_DROPPABLE_PFRAMES:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_DROPPABLE_PFRAMES, ctrl->val);
++		break;
++	case PIVID_CID_DROPPABLE_PFRAME_LEN:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_DROPPABLE_PFRAME_LENGTH, ctrl->val);
++		break;
++	case PIVID_CID_SEI_ENABLE:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_ENCODE_SEI_ENABLE, ctrl->val);
++		break;
++	case PIVID_CID_FRAME_LIMIT_BITS:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_ENCODE_FRAME_LIMIT_BITS, ctrl->val);
++		break;
++	case PIVID_CID_PEAK_RATE:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_ENCODE_PEAK_RATE, ctrl->val);
++		break;
++	case PIVID_CID_DEBLOCK_IDC:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_ENCODE_H264_DEBLOCK_IDC, ctrl->val);
++		break;
++	case PIVID_CID_AU_DELIMITERS:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_ENCODE_H264_AU_DELIMITERS, ctrl->val);
++		break;
++	case PIVID_CID_SEPARATE_NAL_BUFS:
++		ret = pivid_set_u32(ctx, MMAL_PARAMETER_VIDEO_ENCODE_SEPARATE_NAL_BUFS, ctrl->val);
++		break;
+ 	case V4L2_CID_HFLIP:
+ 	case V4L2_CID_VFLIP: {
+ 		u32 u32_value;
+@@ -3427,7 +3589,7 @@ static int bcm2835_codec_open(struct file *file)
+ 	case ENCODE:
+ 	{
+ 		/* Encode controls */
+-		v4l2_ctrl_handler_init(hdl, 13);
++		v4l2_ctrl_handler_init(hdl, 30);   /* 16 P1 + 2 EEDE + 8 complement + 4 (refresh mode/air + 2 HRD) */
+ 
+ 		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
+ 				       V4L2_CID_MPEG_VIDEO_BITRATE_MODE,
+@@ -3492,9 +3654,61 @@ static int bcm2835_codec_open(struct file *file)
+ 				  V4L2_CID_MPEG_VIDEO_B_FRAMES,
+ 				  0, 0,
+ 				  1, 0);
++		/* Multi-slice: rows derived from MAX_MB. Firmware honors only width<=1280. */
++		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
++				       V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE,
++				       V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_BYTES,
++				       0,  /* menu_skip_mask: 0 = allow all menu entries */
++				       V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE);
++		v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
++				  V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB,
++				  0, 0xFFFF, 1, 0);   /* min 0: def 0 == "no MB limit" sentinel */
++		/* Cyclic intra-refresh: period (frames) -> cir_mbs in s_ctrl. */
++		v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
++				  V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD,
++				  0, 0x7FFFFFFF, 1, 0);
+ 		ctx->gop_size = v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
+ 						  V4L2_CID_MPEG_VIDEO_GOP_SIZE,
+ 						  0, 0x7FFFFFFF, 1, 60);
++		/* Phase-2 trial: custom resilience controls (private CID range). */
++		{
++			static const struct v4l2_ctrl_config pivid_ctrls[] = {
++			{ .ops = &bcm2835_codec_ctrl_ops, .id = PIVID_CID_EEDE_ENABLE,
++			  .name = "eede_enable", .type = V4L2_CTRL_TYPE_BOOLEAN,
++			  .min = 0, .max = 1, .step = 1, .def = 0 },
++			{ .ops = &bcm2835_codec_ctrl_ops, .id = PIVID_CID_EEDE_LOSSRATE,
++			  .name = "eede_lossrate", .type = V4L2_CTRL_TYPE_INTEGER,
++			  .min = 0, .max = 100, .step = 1, .def = 0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_DROPPABLE_PFRAMES,
++			  .name="droppable_pframes", .type=V4L2_CTRL_TYPE_BOOLEAN, .min=0,.max=1,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_DROPPABLE_PFRAME_LEN,
++			  .name="droppable_pframe_length", .type=V4L2_CTRL_TYPE_INTEGER, .min=0,.max=0x7FFFFFFF,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_SEI_ENABLE,
++			  .name="sei_enable", .type=V4L2_CTRL_TYPE_BOOLEAN, .min=0,.max=1,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_FRAME_LIMIT_BITS,
++			  .name="frame_limit_bits", .type=V4L2_CTRL_TYPE_INTEGER, .min=0,.max=0x7FFFFFFF,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_PEAK_RATE,
++			  .name="peak_rate", .type=V4L2_CTRL_TYPE_INTEGER, .min=0,.max=0x7FFFFFFF,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_DEBLOCK_IDC,
++			  .name="deblock_idc", .type=V4L2_CTRL_TYPE_INTEGER, .min=0,.max=2,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_AU_DELIMITERS,
++			  .name="au_delimiters", .type=V4L2_CTRL_TYPE_BOOLEAN, .min=0,.max=1,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_SEPARATE_NAL_BUFS,
++			  .name="separate_nal_bufs", .type=V4L2_CTRL_TYPE_BOOLEAN, .min=0,.max=1,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_REFRESH_MODE,
++			  .name="intra_refresh_mode", .type=V4L2_CTRL_TYPE_INTEGER, .min=0,.max=3,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_REFRESH_AIR_MBS,
++			  .name="intra_refresh_air_mbs", .type=V4L2_CTRL_TYPE_INTEGER, .min=0,.max=0xFFFF,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_VCL_HRD,
++			  .name="vcl_hrd_parameters", .type=V4L2_CTRL_TYPE_BOOLEAN, .min=0,.max=1,.step=1,.def=0 },
++			{ .ops=&bcm2835_codec_ctrl_ops, .id=PIVID_CID_LOW_DELAY_HRD,
++			  .name="low_delay_hrd_flag", .type=V4L2_CTRL_TYPE_BOOLEAN, .min=0,.max=1,.step=1,.def=0 },
++			};
++			unsigned int i;
++
++			for (i = 0; i < ARRAY_SIZE(pivid_ctrls); i++)
++				v4l2_ctrl_new_custom(hdl, &pivid_ctrls[i], NULL);
++		}
+ 		if (hdl->error) {
+ 			rc = hdl->error;
+ 			goto free_ctrl_handler;
+diff --git a/drivers/staging/vc04_services/vchiq-mmal/mmal-parameters.h b/drivers/staging/vc04_services/vchiq-mmal/mmal-parameters.h
+index 825daadf2..ee29ef047 100644
+--- a/drivers/staging/vc04_services/vchiq-mmal/mmal-parameters.h
++++ b/drivers/staging/vc04_services/vchiq-mmal/mmal-parameters.h
+@@ -686,6 +686,26 @@ enum mmal_parameter_video_type {
+ 	MMAL_PARAMETER_VIDEO_STOP_ON_PAR_COLOUR_CHANGE,
+ };
+ 
++enum mmal_video_intra_refresh_t {
++	MMAL_VIDEO_INTRA_REFRESH_CYCLIC = 0,
++	MMAL_VIDEO_INTRA_REFRESH_ADAPTIVE = 1,
++	MMAL_VIDEO_INTRA_REFRESH_BOTH = 2,
++	MMAL_VIDEO_INTRA_REFRESH_KHRONOSEXTENSIONS = 0x6F000000,
++	MMAL_VIDEO_INTRA_REFRESH_VENDORSTARTUNUSED = 0x7F000000,
++	MMAL_VIDEO_INTRA_REFRESH_CYCLIC_MROWS,   /* 0x7F000001 */
++	MMAL_VIDEO_INTRA_REFRESH_PSEUDO_RAND,    /* 0x7F000002 */
++	MMAL_VIDEO_INTRA_REFRESH_MAX,
++	MMAL_VIDEO_INTRA_REFRESH_DUMMY = 0x7FFFFFFF /* force 32-bit enum */
++};
++
++struct mmal_parameter_video_intra_refresh {
++	u32 refresh_mode;   /* enum mmal_video_intra_refresh_t */
++	u32 air_mbs;
++	u32 air_ref;
++	u32 cir_mbs;
++	u32 pir_mbs;
++};
++
+ /** Valid mirror modes */
+ enum mmal_parameter_mirror {
+ 	MMAL_PARAM_MIRROR_NONE,

@@ -1,0 +1,19 @@
+[Unit]
+Description=PiVid config-mode dnsmasq (captive DHCP + wildcard DNS)
+PartOf=pivid-config-net.service
+# NO After=pivid-config-net.service: see the matching note in
+# pivid-config-hostapd.service -- starting a helper from net's ExecStart while
+# ordered After net deadlocks net's activation (hardware-confirmed 2026-06-15).
+
+[Service]
+# dnsmasq daemonizes (forks) by default and exits non-zero on config error.
+Type=forking
+PIDFile=/run/pivid/dnsmasq.pid
+ExecStart=/usr/sbin/dnsmasq --conf-file=/run/pivid/dnsmasq.conf --pid-file=/run/pivid/dnsmasq.pid
+Restart=on-failure
+# Don't auto-restart on a clean stop (SIGTERM during target teardown), which
+# would otherwise race the PartOf stop job.
+RestartPreventExitStatus=SIGTERM SIGKILL
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal

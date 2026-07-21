@@ -1,0 +1,865 @@
+LR2021
+
+Application Note: AN1200.107
+LR2021 Analog Improvements
+
+LR2021 Analog Improvements
+
+1 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+Table Of Contents of Contents
+1
+
+Introduction ........................................................................................................................................................................... 4
+
+2
+
+PA Improvements................................................................................................................................................................... 5
+2.1
+
+Single PA Architecture for High Power and Low Power Applications ................................................................................. 5
+
+2.1.1
+
+PA Architecture ...................................................................................................................................................... 5
+
+2.1.2
+
+LF PA (Low Frequency PA) Description .................................................................................................................... 6
+
+2.1.3
+
+HF PA (High Frequency PA) Description ................................................................................................................... 6
+
+2.1.4
+
+PA Parameters........................................................................................................................................................ 7
+
+2.2
+
+SIMO DCDC Converter .................................................................................................................................................... 8
+
+2.3
+
+OCP ................................................................................................................................................................................ 9
+
+2.4
+
+Direct Tie Architecture .................................................................................................................................................. 10
+
+2.5
+
+Muti-Band Operation .................................................................................................................................................... 10
+
+2.6
+
+LR2021 PA Matching Network Design ............................................................................................................................ 11
+
+3
+
+Sensitivity Improvements ..................................................................................................................................................... 12
+
+4
+
+32MHz Oscillator Frequency Compensation .......................................................................................................................... 13
+
+5
+
+Phase Noise Improvement.................................................................................................................................................... 14
+
+6
+
+Conclusion ........................................................................................................................................................................... 15
+
+7
+
+References ........................................................................................................................................................................... 16
+
+8
+
+Glossary ............................................................................................................................................................................... 17
+
+9
+
+Revision History ................................................................................................................................................................... 19
+
+LR2021 Analog Improvements
+
+2 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+Table Of Figures
+Figure 1: LR2021 Dual Band PA Structure ......................................................................................................................................... 5
+Figure 2: Comparison between SX1262 and LR2021 Current Consumption, 915MHz ......................................................................... 6
+Figure 3: LR2021 HF PA TX Power and Current Consumption versus Targeted Power, 2.4GHz ............................................................ 7
+Figure 4: SIMO connections ............................................................................................................................................................. 8
+Figure 6: LR2021 Multi-band Tx Power and PA Efficiency ................................................................................................................ 10
+Figure 7: LR2021 LF and HF PA Matching Network Structure ........................................................................................................... 11
+Figure 8: LR2021/LR1110/SX1262 Phase Noise Comparison ............................................................................................................ 14
+
+Table Of Tables
+Table 1: Sensitivity Improvement across LoRa Connect Product Generations .................................................................................. 12
+
+LR2021 Analog Improvements
+
+3 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+1 Introduction
+The LR2021 is an advanced ultra-low power transceiver designed to operate across both Sub-GHz and 2.4 GHz frequency bands. It
+supports a range of modulation schemes including LoRa®, (G)FSK, (G)MSK, OQPSK, BPSK, FLRC, LR-FHSS and OOK, accompanied by a
+flexible packet engine, providing the LR2021 physical layer compatibility with multiple wireless communication protocols including
+LoRaWAN, Sigfox, Wireless Mbus, Wi-SUN, Z-Wave, and Bluetooth Low Energy.
+The LR2021 introduces substantial analog improvements across four critical areas: it features a dual-band PA design addressing the
+sub-GHz (150 to 960MHz) and 1.5-2.5GHz bands with enhanced efficiency across the output power range. Its also features best-inclass sensitivity performance across all modulation schemes, showing 5dB sensitivity improvement compared to first and second
+generation of LoRa devices. Its significant phase noise reduction demonstrates improved spectral purity, allowing compliance on ARIB
+STD-T108 without compromising the output power level. Finally, it integrates an advanced frequency compensation mechanism,
+allowing to correct in real time the 32 MHz crystal drift.
+This application note details these key analog enhancements that deliver superior performance, enhanced reliability, and expanded
+application capabilities.
+
+LR2021 Analog Improvements
+
+4 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+2 PA Improvements
+The LR2021 introduces an innovative dual-band power amplifier architecture that represents a fundamental advancement over
+previous generations. LoRa generations 1 & 2 devices embedded single band PAs dedicated to high power or low power RF transmit.
+Single-band PA designs were requiring frequency-specific matching network variants specifically designed and tuned for the target
+frequency band to achieve optimal impedance transformation, harmonic filtering, and efficient power transfer. This created a large
+number of reference design, generating complexity at customer level to determine the suitable design for their targeted application.
+Moreover, the PAs were optimized either for high power (20dBm for SX1272 or 22dBm for SX1262 or LR1110), or high efficiency with
+lower output power capability (+14dBm).
+
+2.1 Single PA Architecture for High Power and Low Power Applications
+The LR2021 features an innovative dual-PA architecture optimized for different frequency bands and power requirements.
+
+2.1.1 PA Architecture
+The LR2021 integrates a dual-Band PA Architecture, as shown Figure 1: LR2021 Dual Band PA Structure
+•
+•
+
+in HF PA is optimized for 1.5-2.5 GHz operation covering L-band, S-band and 2.4 GHz ISM
+LF PA: Optimized for 150-960 MHz operation covering sub-GHz ISM bands
+
+Figure 1: LR2021 Dual Band PA Structure
+
+LR2021 Analog Improvements
+
+5 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+2.1.2 LF PA (Low Frequency PA) Description
+The Low Frequency PA (LF PA) is a full single-ended mode switching class PA dedicated to sub-GHz operations (150-960MHz), with
+dual PA branches running in phase. Its differential outputs RFO_LF1 and RFO_LF2 are combined (connected at PCB level) to achieve
+22dBm operation. The external matching network allows to deliver the targeted power with optimal efficiency while maintaining
+compliance to ETSI, FCC and ARIB regulations.
+It is fed from the internal DCDC convertor or the LDO via the PA regulator output pin VR_PA though a high Q inductor.
+The PA has been optimized to deliver the targeted output power with the best efficiency for the whole output power programmable
+range (-9 to +22dBm). Compared to SX1262 and LR1110, a single PA path can deliver both high power signals at 22dBm and lower
+power signal at +14dBm for with the best efficiency as shown in Figure 2 below.
+
+Figure 2: Comparison between SX1262 and LR2021 Current Consumption, 915MHz
+
+2.1.3 HF PA (High Frequency PA) Description
+The High Frequency PA (HF PA) is a class AB PA optimized for linearity and efficiency for frequencies around 2GHz (1.5-2.5GHz) Its
+output power is programmable from -19 to +12dBm. It is fed directly from VBAT via the PA regulator output pin VR_PA though a high
+Q inductor.
+The external matching network allows to deliver the targeted power with optimal efficiency while maintaining compliance to ETSI,
+and FCC regulations.
+Figure 3 shows the HF PA current consumption for 0 to 12dBm output power at 2.4GHz.
+
+LR2021 Analog Improvements
+
+6 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+Figure 3: LR2021 HF PA TX Power and Current Consumption versus Targeted Power, 2.4GHz
+
+2.1.4 PA Parameters
+The following SPI commands control the PA selection and parameters:
+•
+
+•
+•
+•
+
+SetPaConfig (…), opcode 0x0202: selects which power amplifier to use (LF PA or HF PA) and configures the duty cycle
+(pa_lf_duty_cycle and pa_hf_duty_cycle), as well as the number of slices (pa_lf_slices, for LF PA only) for the selected PA.
+The allowed values for pa_lf_duty_cycle and pa_lf_slices are 0 to 7.
+The allowed values for pa_hf_duty_cycle are 16 to 31.
+Command SetPaConfig (…) has to be called before SetTxParams(…).
+SetTxParams (…), opcode 0x0203: control the TX power tx_power and the ramp time.
+Note that TX power is controlled in half-dB steps settings
+SetTx (…), opcode 0x020D activates the transmission with the configured settings.
+SelPa (…), opcode 0x020F allows to switch rapidly between the LF PA and the HF PA that have already been configured. This
+command has to be called after SetPaConfig (…).
+
+The necessary sequence to configure the PAs is then:
+12-
+
+SetPaConfig(…)
+SetTxParams(…)
+
+Please refer to the LR2021 Datasheet for a description of these commands.
+Note that the PA slices and duty cycle also have an impact on the PA output power and therefore the current consumption, different
+combinations of TX Power, Duty Cycle and Slides possibly resulting in comparable performance values. The impact of TX Power, Duty
+Cycle and Slides varies depending on the impedance presented to the PAs, and therefore from one hardware design to another (layout
+and Bill of Materials). Semtech provides examples of the recommended PA settings providing the best efficiency for the possible
+output power levels (aka PA Tables), based on measurements on reference design in the LR2021 Datasheet.
+
+LR2021 Analog Improvements
+
+7 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+It is recommended that the user determines these PA tables based on the performance measured on his own design, testing which
+combinations of tx_power, pa_lf_duty_cycle and pa_lf_slices (for PA LF) or tx_power and pa_hf_duty_cycle (for PA HF) provide the
+best performance.
+
+2.2 SIMO DCDC Converter
+The LR2021 PAs operate from both the LDO and the integrated DC-DC converter, allowing lower power consumption from the
+LR2021. The DC-DC converter is a SIMO (Single Input Multiple Output) converter, which efficiently steps down the battery voltage
+(VBAT) to provide multiple regulated voltage rails for the PA regulator at various output power levels (via VPAX1 pin), as well as for
+the device LDO regulator (via VDCC pin).
+Figure 4 shows the electrical connections of the SIMO. Note that the PA regulator is connected to the SIMO internally. Please also
+refer to the LR2021 reference design for guidance on electrical connections.
+
+Figure 4: SIMO connections
+The choice of the SIMO Inductor is key to achieve the best efficiency ( up to 85%). Please ensure that the selected inductor has the
+following characteristics:
+•
+•
+•
+•
+
+Value: 2.2uH
+DCR (max): 0.5Ohm
+Isat (min): 200mA
+Resonant Frequency (min): 20MHz minimum
+
+References like LQM18PN2R2MGH or LSQNB160808T2R2M are suitable component choices for the SIMO inductor.
+Command SetRegMode(…), opcode 0x0221 configures the choice between the LDO or the SIMO DCDC converter. Please refer to the
+LR2021 Datasheet for a description of this command.
+
+LR2021 Analog Improvements
+
+8 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+2.3 OCP
+The LR2021 embeds an Over-Current Protection (OCP) to avoid excessive current consumption in case of impedance mismatch. It
+continuously monitors the PA current consumption and limits the current to the configured level to protect both the internal PA and
+the battery from excessive current peaks, thus preventing excessive battery discharge and maintaining battery lifetime.
+The OCP is configured via register settings (described in LR2021 Datasheet) as a hardware protection mechanism that operates
+independently of higher-level firmware functions.
+The OCP thresholds for each PA are configurable. By default, they are set at 150mA for PA_LF and 50mA for PA HF. It is, however,
+best practice for the user to set this value according to the measured current in his own hardware design, under the worst case SWR
+conditions, plus ~25% of margin.
+An Interruption (bit 11 of the IRQ register) is raised when the PA current reaches the OCP threshold.
+
+LR2021 Analog Improvements
+
+9 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+2.4 Direct Tie Architecture
+The LR2021 supports an efficient and cost-effective "direct tie" matching network configuration, that directly connects the PA and
+LNA stages to the antenna point on both LF and HF paths, without the need for external RF switches to demonstrate the highest RX
+and TX performance.
+On each path, PA and LNA are permanently connected to the antenna through a carefully designed matching network that
+incorporates protective elements and impedance transformation circuits using high quality factor inductors and capacitors. During
+transmission, the PA drives the RF signals through the matching network to the antenna, while the RX input path is protected by
+series blocking capacitors that prevent DC coupling. In receive mode, the incoming RF signal reaches the LNA through the same
+matching network path, while the PA output stage is inactive and presents high impedance to avoid loading the receive path. Series
+capacitors also maintain isolation between the transmit and receive signal paths.
+This reduces both the risk and complexity linked to managing the RF switches in the application and brings significant BOM savings
+in the overall solution, while allowing to achieve superior TX and RX performance.
+Refer to section 2.6 for an overview of the structure of the LR2021 matching network.
+
+2.5 Muti-Band Operation
+The LR2021's advanced RF architecture enables a single bill of materials (BOM) solution for multi-regional deployment for the LF PA.
+Semtech proposes a single PCB design and BOM for 868/915MHz operation, covering 863 to 928MHz, and therefore addressing the
+ISM bands for LoRa for India, Europe, North America and Asia. The integrated harmonic filtering cells in the matching network and
+usage of the PA parameters TX Power, duty cycle and slices allow to obtain the best efficiency for the targeted output power levels
+and comply with the local regulatory limits in the various regions.
+As Figure 5 shows, both the TX power and the PA efficiency show a stable level across the 863-930 MHz frequency band.
+
+Figure 5: LR2021 Multi-band Tx Power and PA Efficiency
+A Single PCB design and BOM for multiple frequency bands allows significant reduction of the application development time, as well
+as simplification and cost reduction in the inventory and logistic chains for global deployments.
+Note that 433MHz and 490MHz solutions require a dedicated Bill of Materials.
+
+LR2021 Analog Improvements
+
+10 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+2.6 LR2021 PA Matching Network Design
+The schematic of the LR2021 Dual band matching networks on the LF and HF paths in a Single Tie implementation is shown in Figure
+6 here below.
+The matching network integrates both impedance matching and low pass filtering stages to comply with the regulatory limits. It is
+advised to add an ESD -protection diode on the antenna connections to protect the application against ESD discharge in case of
+manipulation of the application. Please contact your Semtech representative for guidance on part number selection.
+Note that the matching network structure of the 490MHz or 433MHz LF PA solution is identical to the 868/915MHz implementation,
+with specific component values.
+Please find the reference designs on the LoRa Plus ™ product page at the following location: LoRa Plus™ LR2021 | Fourth-generation
+LoRa® IP for Fast Long Range Communication (FLRC) | Semtech.
+
+Figure 6: LR2021 LF and HF PA Matching Network Structure
+
+LR2021 Analog Improvements
+
+11 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+3 Sensitivity Improvements
+As the generation 4 of LoRa transceiver from Semtech, the LR2021 inherits part of its LoRa sensitivity improvements over the previous
+generations of LoRa devices from the enhancements and optimizations in the LoRa demodulator. However, the improvements in the
+entire receive chain in the LR2021 allow it to demonstrate significant sensitivity improvements across all supported modulation
+schemes compared to previous generations of LoRa devices, as shown in Table 1:
+Device
+
+LR2021 (Gen4)
+
+LR11xx (Gen3)
+
+SX126x (Gen2)
+
+SX127x (Gen1)
+
+LoRa® Rx Current SF12/BW125 Boost/No-Boost
+
+6.9 / 5.7 mA
+
+7.8 / 5.7 mA
+
+5.3 / 4.6 mA
+
+11.2 / 10.5 mA
+
+Sensitivity SF12/BW125 Boost/No-Boost
+
+-141.5/-140.5 dBm
+
+-141 / -139 dBm
+
+-137 / -135 dBm
+
+-137 / -135 dBm
+
+Sensitivity SF7/BW125 Boost/No-Boost
+
+-127.5/126.5 dBm
+
+-127/-125 dBm
+
+-124 /-122 dBm
+
+-124 /-122 dBm
+
+Sensitivity FSK BR=1.2kb/s, FDA=5kHz
+
+-124.5 dBm
+
+-123 dBm
+
+-123 dBm
+
+-123 dBm
+
+Table 1: Sensitivity Improvement across LoRa Connect Product Generations
+Note that the LR2021 sensitivity values in this table have been measured on a direct tie matching network implementation, whereas
+all the previous generations have been measured with a RF switch implementation, known to exhibit improved sensitivity figures
+compared to direct tie.
+
+Please refer to AN1200.102 LR2021 LoRa Improvements on the LoRa Plus ™ product page [1] for details on the LR2021 sensitivity
+performance and additional information on the additional improvements to the LoRa modulation.
+
+LR2021 Analog Improvements
+
+12 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+4 32MHz Oscillator Frequency Compensation
+Previous generation LoRa devices experienced significant challenges with crystal frequency drift due to thermal effects during highpower transmission. The transmission of RF packets at high RF power generates significant heat which transfers to the 32MHz crystal
+through the PCB, causing frequency drift that can induce receive errors.
+The LR2021 implements advanced frequency compensation mechanisms to compensate this drift at device level through real time
+compensation of the device temperature increase, as well as on the 32MHz crystal level.
+
+Please refer to AN1200.102 LR2021 LoRa Improvements on the LoRa Plus ™ product page [1] for details on the LR2021 sensitivity
+performance and additional information on the additional improvements to the LoRa modulation.
+
+LR2021 Analog Improvements
+
+13 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+5 Phase Noise Improvement
+Phase noise results from the addition of multiple noise sources, from the reference clock (xtal block) itself to the VCO (VoltageControlled Oscillator) and PLL noise. It manifests itself as spectral spreading around the carrier frequency, leading to the broadening
+of the signal spectrum, which can significantly impact wireless communication system performance (by increasing spectral leakage,
+and/or reducing the effective SNR, hence the receiver sensitivity).
+Regulatory compliance tests from ETSI EN 300 220, FCC CFR 47 Part 15, China regulatory requirements and the Japanese ARIB T-108
+limit the spurious emissions radio from the radio. The stringent requirements of the Japanese ARIB T-108 often require
+compromising the transmission power to respect the regulatory limits, as well as adding a SAW filter, adding to the overall solution
+BOM cost.
+The LR2021 features a reduced phase noise compared to the previous generations of LoRa radios, as shown in Figure 7. This allows
+compliance with the radio regulations without compromising the output power.
+
+SX1262
+LR1110
+LR2021
+
+Figure 7: LR2021/LR1110/SX1262 Phase Noise Comparison
+Note: The spectral peak at +84 kHz offset (approximately -70 dBc) may appear in lab measurements due to internal monitoring
+circuitry. This spur is masked by the noise floor during normal operation and does not impact performance or regulatory compliance.
+
+Refer to AN1200.102 LR2021 LoRa Improvements, or to AN1200.108 LR2021 Regulatory Compliance on the LoRa Plus ™ product page
+[1] for additional information.
+
+LR2021 Analog Improvements
+
+14 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+6 Conclusion
+The LR2021 represents a significant advancement in LoRa technology, delivering substantial analog improvements across all critical
+performance metrics. The fourth-generation LoRa IP incorporates a novel PA architecture, allowing dual-band design with optimized
+efficiency, multi-band capability, and innovative direct-tie implementation. It also demonstrates best in class sensitivity performance,
+outperforming by 5dB the receive performance of the 1st generation of LoRa radio. Its significant reduction in phase noise enables
+better regulatory compliance and enhanced system performance.
+The LR2021's analog improvements establish a new benchmark for LoRa technology, enabling next-generation IoT applications with
+superior performance and lower power consumption. These advancements position the LR2021 as the optimal choice for applications
+requiring exceptional RF performance while maintaining cost-effectiveness and design simplicity.
+
+LR2021 Analog Improvements
+
+15 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+7 References
+[1]: LoRa Plus product page : https://www.semtech.com/products/wireless-rf/lora-plus/lr2021
+
+LR2021 Analog Improvements
+
+16 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+8 Glossary
+Term
+
+Description
+
+ARIB
+
+Association of Radio Industries and Businesses (Japan)
+
+BOM
+
+Bill of Materials
+
+DCDC
+
+Direct Current to Direct Current Converter
+
+ETSI
+
+European Telecommunications Standards Institute
+
+ESD
+
+Electrostatic Discharge
+
+FCC
+
+Federal Communications Commission
+
+FDA
+
+Frequency Deviation
+
+FLRC
+
+Fast Long Range Communication
+
+FSK
+
+Frequency Shift Keying
+
+HF
+
+High Frequency (1.6-2.5 GHz band in LR2021)
+
+IRQ
+
+Interrupt Request
+
+ISM
+
+Industrial, Scientific and Medical
+
+LDO
+
+Low-Dropout regulator
+
+LF
+
+Low Frequency (150-960 MHz band in LR2021)
+
+LNA
+
+Low-Noise Amplifier
+
+OCP
+
+Over Current Protection
+
+PA
+
+Power Amplifier
+
+PCB
+
+Printed Circuit Board
+
+PLL
+
+Phase-Locked Loop
+
+RF
+
+Radio Frequency
+
+LR2021 Analog Improvements
+
+17 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+RX
+
+Receive/Reception
+
+SAW
+
+Surface Acoustic Wave
+
+SIMO
+
+Single Input Multiple Output
+
+SNR
+
+Signal to Noise Ratio
+
+SWR
+
+Standing Wave Ratio
+
+TX
+
+Transmit/Transmission
+
+LR2021 Analog Improvements
+
+18 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+9 Revision History
+Version
+
+ECO
+
+Date
+
+Changes and/or Modifications
+
+1.0
+
+076679
+
+October 2025
+
+Initial Release
+
+LR2021 Analog Improvements
+
+19 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+AN1200.107
+
+Important Notice
+Information relating to this product and the application or design described herein is
+believed to be reliable, however such information is provided as a guide only and
+Semtech assumes no liability for any errors in this document, or for the application
+or design described herein.
+Semtech reserves the right to make changes to the product or this document at any
+time without notice. Buyers should obtain the latest relevant information before
+placing orders and should verify that such information is current and complete.
+Semtech warrants performance of its products to the specifications applicable at
+the time of sale, and all sales are made in accordance with Semtech’s standard
+terms and conditions of sale.
+SEMTECH PRODUCTS ARE NOT DESIGNED, INTENDED, AUTHORIZED OR
+WARRANTED TO BE SUITABLE FOR USE IN LIFE-SUPPORT APPLICATIONS, DEVICES
+OR SYSTEMS, OR IN NUCLEAR APPLICATIONS IN WHICH THE FAILURE COULD BE
+REASONABLY EXPECTED TO RESULT IN PERSONAL INJURY, LOSS OF LIFE OR
+SEVERE PROPERTY OR ENVIRONMENTAL DAMAGE. INCLUSION OF SEMTECH
+PRODUCTS IN SUCH APPLICATIONS IS UNDERSTOOD TO BE UNDERTAKEN SOLELY
+AT THE CUSTOMER’S OWN RISK.
+Should a customer purchase or use Semtech products for any such unauthorized
+application, the customer shall indemnify and hold Semtech and its officers,
+employees, subsidiaries, affiliates, and distributors harmless against all claims, costs
+damages and attorney fees which could arise.
+The Semtech name and logo are registered trademarks of the Semtech
+Corporation. All other trademarks and trade names mentioned may be marks and
+names of Semtech or their respective companies. Semtech reserves the right to
+make changes to, or discontinue any products described in this document without
+further notice. Semtech makes no warranty, representation or guarantee, express or
+implied, regarding the suitability of its products for any particular purpose. All rights
+reserved.
+© Semtech 2025
+
+LR2021 Analog Improvements
+
+20 of 20
+Rev. 1.0
+
+AN1200.107
+
+October 2025
+
+www.semtech.com
+
+Semtech Corporation
+
+Proprietary & Confidential
+
+

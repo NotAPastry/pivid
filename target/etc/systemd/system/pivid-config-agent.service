@@ -1,0 +1,21 @@
+[Unit]
+Description=PiVid config agent (always-on: button + config LED + web config portal)
+# Deliberately NOT ordered after network.target. The agent binds 0.0.0.0:80
+# (succeeds with no link) and the button/LED path needs only /dev/gpiochip0, so
+# waiting on the network is pure latency: ifup@wlan0 took ~8.5s to associate,
+# leaving the blue LED lit and the button dead for ~14s after power-on. Default
+# dependencies still order us after basic.target (~4.6s on this DietPi image),
+# which is all we need. Only reads /run/pivid/* (absent path is benign), so no
+# RuntimeDirectory/ordering against the config-net unit is required.
+After=local-fs.target
+
+[Service]
+Type=exec
+ExecStart=/opt/pivid/pivid-config-agent --config /opt/pivid/pivid.conf
+Restart=on-failure
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

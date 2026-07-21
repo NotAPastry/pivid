@@ -1,0 +1,48 @@
+SNEAKY_FPV HD Font Licence (Community Use)
+
+Copyright © 2026 Shannon M Baker (SNEAKY_FPV)
+All rights reserved.
+
+Free for Personal FPV Use
+Not Free for Companies
+
+This font is provided free of charge to the FPV community for personal, non-commercial use.
+
+You are welcome to:
+
+✅ Use the font in your personal FPV setup
+
+✅ Load it onto your own goggles, DVR, or flight controller
+
+✅ Modify it for personal use
+
+✅ Share the original package with other hobbyists
+
+What You May NOT Do
+
+Without prior written permission, you may NOT:
+
+❌ Embed this font in commercial firmware or hardware
+
+❌ Include it in products sold or distributed commercially
+
+❌ Bundle it with FPV equipment or software releases
+
+❌ Sell the font or any modified version
+
+❌ Use it in any commercial or monetised product
+
+Commercial or Embedded Use:
+
+Companies or developers wishing to use this font in firmware, hardware, software, or commercial products must obtain permission first.
+
+Contact: shannon.m.baker@gmail.com
+
+Ownership:
+
+This font or font files as packaged, remains the intellectual property of Shannon M Baker (SNEAKY_FPV).
+No ownership rights are transferred.
+
+No Warranty
+
+This font is provided “as is”, without warranty of any kind.

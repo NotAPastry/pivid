@@ -1,0 +1,20 @@
+[Unit]
+Description=PiVid RX daemon (H.264 over LR2021 radio)
+ConditionPathExists=/dev/radio0
+After=systemd-modules-load.service
+
+[Service]
+# pivid-rx ensures a good RSSI calibration itself at startup (reloads the lr2021
+# module until the gain-consistency probe passes -- the POR cal is RF-corrupted
+# on most boots), then runs as the daemon.
+Type=exec
+ExecStart=/opt/pivid/pivid-rx --config /opt/pivid/pivid.conf
+Restart=on-failure
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+# pivid-rx is pure radio ingest -> loopback UDP (no DRM/KMS, no GStreamer).
+# Runs as root for /dev/radio0 access on the appliance image.
+
+[Install]
+WantedBy=multi-user.target

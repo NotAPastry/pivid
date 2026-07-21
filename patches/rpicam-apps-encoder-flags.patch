@@ -1,0 +1,88 @@
+diff --git a/core/options.hpp b/core/options.hpp
+index c4e81fc..4a2986d 100644
+--- a/core/options.hpp
++++ b/core/options.hpp
+@@ -281,6 +281,13 @@ struct OptsInternal
+ 	std::string level;
+ 	unsigned int intra;
+ 	bool inline_headers;
++	// PiVid: encoder resilience controls (see encoder/h264_encoder.cpp)
++	std::string bitrate_mode;
++	unsigned int intra_refresh;
++	unsigned int slice_mb;
++	bool droppable_pframes;
++	unsigned int droppable_len;
++	bool frame_trailer;
+ 	std::string codec;
+ 	std::string libav_video_codec;
+ 	std::string libav_video_codec_opts;
+diff --git a/core/video_options.hpp b/core/video_options.hpp
+index f1dafe4..6dabf11 100644
+--- a/core/video_options.hpp
++++ b/core/video_options.hpp
+@@ -32,6 +32,18 @@ struct VideoOptions : public Options
+ 			 "Set the intra frame period")
+ 			("inline", value<bool>(&v_->inline_headers)->default_value(false)->implicit_value(true),
+ 			 "Force PPS/SPS header with every I frame (h264 only)")
++			("bitrate-mode", value<std::string>(&v_->bitrate_mode)->default_value("vbr"),
++			 "Rate control mode: \"vbr\" or \"cbr\" (h264 only)")
++			("intra-refresh", value<unsigned int>(&v_->intra_refresh)->default_value(0),
++			 "Cyclic intra-refresh period in frames (0=off; GDR recipe)")
++			("slice-mb", value<unsigned int>(&v_->slice_mb)->default_value(0),
++			 "Max macroblocks per slice (0=single slice)")
++			("droppable-pframes", value<bool>(&v_->droppable_pframes)->default_value(false)->implicit_value(true),
++			 "Emit non-reference (droppable) P-frames")
++			("droppable-len", value<unsigned int>(&v_->droppable_len)->default_value(0),
++			 "Droppable-P run length / reference-frame spacing")
++			("frame-trailer", value<bool>(&v_->frame_trailer)->default_value(false)->implicit_value(true),
++			 "Append a per-frame trailer NAL (releases the tail slice early; IMP-1)")
+ 			("codec", value<std::string>(&v_->codec)->default_value("h264"),
+ 			 "Set the codec to use, either h264, libav (if available), mjpeg or yuv420")
+ 			("encoder-libs", value<std::string>(&v_->encoder_libs)->default_value(""),
+diff --git a/encoder/h264_encoder.cpp b/encoder/h264_encoder.cpp
+index ea28e07..2cef403 100644
+--- a/encoder/h264_encoder.cpp
++++ b/encoder/h264_encoder.cpp
+@@ -106,6 +106,42 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
+ 			throw std::runtime_error("failed to set inline headers");
+ 	}
+ 
++	// --- PiVid: extra encoder controls from CLI flags (see core/video_options.hpp) ---
++	// Private CID base MUST match patches/bcm2835-codec-controls.patch.
++#define PIVID_CID_BASE                  (V4L2_CID_USER_BASE + 0x2000)
++#define PIVID_CID_DROPPABLE_PFRAMES     (PIVID_CID_BASE + 2)
++#define PIVID_CID_DROPPABLE_PFRAME_LEN  (PIVID_CID_BASE + 3)
++#define PIVID_CID_FRAME_TRAILER         (PIVID_CID_BASE + 14)
++	{
++		auto pivid_set = [&](unsigned int id, int val, const char *what) {
++			v4l2_control c = {};
++			c.id = id;
++			c.value = val;
++			if (xioctl(fd_, VIDIOC_S_CTRL, &c) < 0)
++				throw std::runtime_error(std::string("pivid: failed to set ") + what);
++		};
++		if (!options->Get().bitrate_mode.empty())
++			pivid_set(V4L2_CID_MPEG_VIDEO_BITRATE_MODE,
++				  options->Get().bitrate_mode == "cbr" ? V4L2_MPEG_VIDEO_BITRATE_MODE_CBR
++								       : V4L2_MPEG_VIDEO_BITRATE_MODE_VBR,
++				  "bitrate_mode");
++		if (options->Get().intra_refresh)
++			pivid_set(V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD,
++				  options->Get().intra_refresh, "intra_refresh");
++		if (options->Get().slice_mb) {
++			pivid_set(V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE,
++				  V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB, "slice_mode");
++			pivid_set(V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB,
++				  options->Get().slice_mb, "slice_mb");
++		}
++		if (options->Get().droppable_pframes)
++			pivid_set(PIVID_CID_DROPPABLE_PFRAMES, 1, "droppable_pframes");
++		if (options->Get().droppable_len)
++			pivid_set(PIVID_CID_DROPPABLE_PFRAME_LEN,
++				  options->Get().droppable_len, "droppable_len");
++		if (options->Get().frame_trailer)
++			pivid_set(PIVID_CID_FRAME_TRAILER, 1, "frame_trailer");
++	}
+ 	// Set the output and capture formats. We know exactly what they will be.
+ 
+ 	v4l2_format fmt = {};

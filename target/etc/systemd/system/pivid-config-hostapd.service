@@ -1,0 +1,23 @@
+[Unit]
+Description=PiVid config-mode hostapd (open AP on wlan0)
+PartOf=pivid-config-net.service
+# NO After=pivid-config-net.service: the net oneshot starts this unit
+# synchronously from its own ExecStart. An After= on net would DEADLOCK -- the
+# helper's start job waits for net to finish activating while net is blocked in
+# `systemctl start` of this helper, hitting net's TimeoutStartSec (~90s) and
+# stranding wlan0 (hardware-confirmed 2026-06-15). Ordering is guaranteed
+# imperatively by the script; teardown is covered by down() + PartOf.
+
+[Service]
+# forking: hostapd -B exits non-zero on bad config, so `systemctl start` (run
+# by the net script) reflects real success/failure -> the rollback fires.
+Type=forking
+PIDFile=/run/pivid/hostapd.pid
+ExecStart=/usr/sbin/hostapd -B -P /run/pivid/hostapd.pid /run/pivid/hostapd.conf
+Restart=on-failure
+# Don't auto-restart on a clean stop (SIGTERM during target teardown), which
+# would otherwise race the PartOf stop job and re-bind a half-torn-down wlan0.
+RestartPreventExitStatus=SIGTERM SIGKILL
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal

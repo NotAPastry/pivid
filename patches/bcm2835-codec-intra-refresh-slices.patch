@@ -1,0 +1,168 @@
+diff --git a/drivers/staging/vc04_services/bcm2835-codec/bcm2835-v4l2-codec.c b/drivers/staging/vc04_services/bcm2835-codec/bcm2835-v4l2-codec.c
+index 903cb88d8..42c7ede8b 100644
+--- a/drivers/staging/vc04_services/bcm2835-codec/bcm2835-v4l2-codec.c
++++ b/drivers/staging/vc04_services/bcm2835-codec/bcm2835-v4l2-codec.c
+@@ -722,6 +722,8 @@ struct bcm2835_codec_ctx {
+ 	/* Source and destination queue data */
+ 	struct bcm2835_codec_q_data   q_data[2];
+ 	s32  bitrate;
++	u32  slice_mode;	/* last V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE value */
++	u32  slice_max_mb;	/* last V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB value */
+ 	unsigned int	framerate_num;
+ 	unsigned int	framerate_denom;
+ 
+@@ -2392,6 +2394,94 @@ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
+ 						    sizeof(mmal_bool));
+ 		break;
+ 	}
++	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE:
++	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB: {
++		struct bcm2835_codec_q_data *q = &ctx->q_data[V4L2_M2M_SRC];
++		u32 mbs_wide = DIV_ROUND_UP(q->crop_width, 16);
++		u32 mb_rows;
++
++		if (ctrl->id == V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE)
++			ctx->slice_mode = ctrl->val;
++		else
++			ctx->slice_max_mb = ctrl->val;
++
++		if (!ctx->component)
++			break;
++		/*
++		 * Geometry may be unset if controls are applied before S_FMT.
++		 * mbs_wide==0 would make the MAX_MB divide below undefined
++		 * (on aarch64 UDIV-by-0 returns 0 rather than trapping, so this
++		 * is a wrong-value guard, not a panic guard). Bail; the control
++		 * value is already cached above and re-applied on the next set.
++		 */
++		if (!mbs_wide)
++			break;
++		if (ctx->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE) {
++			mb_rows = 0;                 /* 0 = one slice/frame */
++		} else if (ctx->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB) {
++			if (q->crop_width > 1280) {
++				v4l2_warn(&ctx->dev->v4l2_dev,
++					  "slices unsupported for width>1280; ignoring\n");
++				break;
++			}
++			mb_rows = ctx->slice_max_mb ?
++				  DIV_ROUND_UP(ctx->slice_max_mb, mbs_wide) : 0;
++		} else { /* MAX_BYTES — MMAL has no byte mode */
++			ret = -EINVAL;
++			break;
++		}
++		ret = vchiq_mmal_port_parameter_set(ctx->dev->instance,
++				&ctx->component->output[0],
++				MMAL_PARAMETER_MB_ROWS_PER_SLICE,
++				&mb_rows, sizeof(mb_rows));
++		break;
++	}
++	case V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD: {
++		struct bcm2835_codec_q_data *q = &ctx->q_data[V4L2_M2M_SRC];
++		u32 mbw = DIV_ROUND_UP(q->crop_width, 16);   /* MBs per row */
++		u32 mbh = DIV_ROUND_UP(q->crop_height, 16);  /* MB rows */
++		struct mmal_parameter_video_intra_refresh ir;
++		u32 len = sizeof(ir);
++		u32 rows;
++
++		BUILD_BUG_ON(sizeof(ir) != 20); /* 5 x u32; header added by mmal layer */
++		if (!ctx->component)
++			break;
++		/*
++		 * Geometry unset (controls before S_FMT) => bail; the next set
++		 * (post-format) applies it. mbw is also the divisor-free row
++		 * width used below.
++		 */
++		if (!mbw || !mbh)
++			break;
++		memset(&ir, 0, sizeof(ir));
++		/* get-then-set: don't clobber firmware defaults for other fields. */
++		(void)vchiq_mmal_port_parameter_get(ctx->dev->instance,
++				&ctx->component->output[0],
++				MMAL_PARAMETER_VIDEO_INTRA_REFRESH, &ir, &len);
++		ir.refresh_mode = MMAL_VIDEO_INTRA_REFRESH_CYCLIC;
++		/*
++		 * Firmware requires cir_mbs to be a multiple of the macroblock
++		 * row width (mbw) and strictly greater than one row. Refresh the
++		 * whole frame (mbh rows) over `period` frames: rows/frame =
++		 * ceil(mbh / period), clamped to >= 2 rows so cir_mbs > mbw.
++		 * An unaligned cir_mbs is silently ignored by the firmware.
++		 */
++		if (ctrl->val) {
++			rows = DIV_ROUND_UP(mbh, ctrl->val);
++			if (rows < 2)
++				rows = 2;
++			ir.cir_mbs = rows * mbw;
++		} else {
++			ir.cir_mbs = 0;
++		}
++		ir.air_mbs = ir.air_ref = ir.pir_mbs = 0;
++		ret = vchiq_mmal_port_parameter_set(ctx->dev->instance,
++				&ctx->component->output[0],
++				MMAL_PARAMETER_VIDEO_INTRA_REFRESH,
++				&ir, sizeof(ir));
++		break;
++	}
+ 	case V4L2_CID_HFLIP:
+ 	case V4L2_CID_VFLIP: {
+ 		u32 u32_value;
+@@ -3427,7 +3517,7 @@ static int bcm2835_codec_open(struct file *file)
+ 	case ENCODE:
+ 	{
+ 		/* Encode controls */
+-		v4l2_ctrl_handler_init(hdl, 13);
++		v4l2_ctrl_handler_init(hdl, 16);   /* was 13; +2 slice, +1 intra-refresh */
+ 
+ 		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
+ 				       V4L2_CID_MPEG_VIDEO_BITRATE_MODE,
+@@ -3492,6 +3582,19 @@ static int bcm2835_codec_open(struct file *file)
+ 				  V4L2_CID_MPEG_VIDEO_B_FRAMES,
+ 				  0, 0,
+ 				  1, 0);
++		/* Multi-slice: rows derived from MAX_MB. Firmware honors only width<=1280. */
++		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
++				       V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE,
++				       V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_BYTES,
++				       0,  /* menu_skip_mask: 0 = allow all menu entries */
++				       V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE);
++		v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
++				  V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB,
++				  0, 0xFFFF, 1, 0);   /* min 0: def 0 == "no MB limit" sentinel */
++		/* Cyclic intra-refresh: period (frames) -> cir_mbs in s_ctrl. */
++		v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
++				  V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD,
++				  0, 0x7FFFFFFF, 1, 0);
+ 		ctx->gop_size = v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
+ 						  V4L2_CID_MPEG_VIDEO_GOP_SIZE,
+ 						  0, 0x7FFFFFFF, 1, 60);
+diff --git a/drivers/staging/vc04_services/vchiq-mmal/mmal-parameters.h b/drivers/staging/vc04_services/vchiq-mmal/mmal-parameters.h
+index 825daadf2..ee29ef047 100644
+--- a/drivers/staging/vc04_services/vchiq-mmal/mmal-parameters.h
++++ b/drivers/staging/vc04_services/vchiq-mmal/mmal-parameters.h
+@@ -686,6 +686,26 @@ enum mmal_parameter_video_type {
+ 	MMAL_PARAMETER_VIDEO_STOP_ON_PAR_COLOUR_CHANGE,
+ };
+ 
++enum mmal_video_intra_refresh_t {
++	MMAL_VIDEO_INTRA_REFRESH_CYCLIC = 0,
++	MMAL_VIDEO_INTRA_REFRESH_ADAPTIVE = 1,
++	MMAL_VIDEO_INTRA_REFRESH_BOTH = 2,
++	MMAL_VIDEO_INTRA_REFRESH_KHRONOSEXTENSIONS = 0x6F000000,
++	MMAL_VIDEO_INTRA_REFRESH_VENDORSTARTUNUSED = 0x7F000000,
++	MMAL_VIDEO_INTRA_REFRESH_CYCLIC_MROWS,   /* 0x7F000001 */
++	MMAL_VIDEO_INTRA_REFRESH_PSEUDO_RAND,    /* 0x7F000002 */
++	MMAL_VIDEO_INTRA_REFRESH_MAX,
++	MMAL_VIDEO_INTRA_REFRESH_DUMMY = 0x7FFFFFFF /* force 32-bit enum */
++};
++
++struct mmal_parameter_video_intra_refresh {
++	u32 refresh_mode;   /* enum mmal_video_intra_refresh_t */
++	u32 air_mbs;
++	u32 air_ref;
++	u32 cir_mbs;
++	u32 pir_mbs;
++};
++
+ /** Valid mirror modes */
+ enum mmal_parameter_mirror {
+ 	MMAL_PARAM_MIRROR_NONE,

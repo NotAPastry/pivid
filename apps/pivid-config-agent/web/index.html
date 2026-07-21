@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PiVid config</title>
+<style>__PICO_CSS__</style>
+<style>
+/* Compact overrides so the whole console fits without scrolling on a phone. */
+:root{--pico-font-size:90%;--pico-spacing:.5rem;
+  --pico-block-spacing-vertical:.5rem;--pico-form-element-spacing-vertical:.3rem;
+  --pico-typography-spacing-vertical:.5rem}
+main{padding:.6rem;max-width:50rem;margin:0 auto}
+h1{font-size:1.25rem;margin:0 0 .4rem}
+#lang{width:auto;display:inline-block;padding:.1rem .5rem;margin:0;float:right;font-size:.85rem}
+article{margin:.45rem 0;padding:.5rem .75rem}
+article h3{font-size:.95rem;margin:.1rem 0 .35rem}
+/* Section headers: clearly distinct from the field labels below them. */
+.sechead{margin:1.15rem 0 .45rem;padding-bottom:.2rem;
+  border-bottom:1px solid var(--pico-primary);font-size:.72rem;font-weight:600;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--pico-primary)}
+/* Field row: label left, input right, help spanning beneath. */
+.cfgfield{display:grid;grid-template-columns:minmax(0,1fr) minmax(11.2rem,24rem);
+  gap:.15rem .8rem;align-items:center;margin:0 0 .55rem}
+.cfgfield .lab{margin:0;font-size:.9rem}
+.cfgfield input,.cfgfield select{margin:0;width:100%}
+.cfgfield .help{grid-column:1/-1;margin:.05rem 0 0}
+@media (max-width:34rem){.cfgfield{grid-template-columns:1fr}}
+.badge{font-size:.62em;padding:.05em .4em;border-radius:.5em;
+  background:var(--pico-code-background-color);color:var(--pico-muted-color);
+  margin-left:.4em;text-transform:none;letter-spacing:0}
+.match{font-size:.66em;color:#c77;margin-left:.35em}
+.help{font-size:.76em;color:var(--pico-muted-color)}
+/* Compact checkbox that reads clearly on the dark theme: an empty bordered box
+   when off, a filled box + white tick when on -- so the two states can't be
+   confused. :focus-visible keeps the focus ring to keyboard nav only, so a
+   mouse click that unchecks it doesn't leave it stuck looking "blue/on". */
+.cbxrow{display:inline-flex;align-items:center;gap:.4em;cursor:pointer;
+  font-size:.76em;color:var(--pico-muted-color);margin:.3rem 0 0}
+/* Sit the toggle in the input column so it reads as "below the password box". */
+.cfgfield .cbxrow{grid-column:2}
+@media (max-width:34rem){.cfgfield .cbxrow{grid-column:1}}
+input.cbx{appearance:none;-webkit-appearance:none;flex:none;width:1.05em;height:1.05em;
+  margin:0;border:1px solid var(--pico-form-element-border-color);border-radius:.25em;
+  background:var(--pico-background-color);position:relative;cursor:pointer;
+  transition:background .12s,border-color .12s}
+input.cbx:hover{border-color:var(--pico-primary)}
+input.cbx:checked{background:var(--pico-primary);border-color:var(--pico-primary)}
+input.cbx:checked::after{content:"";position:absolute;left:.34em;top:.12em;
+  width:.22em;height:.46em;border:solid #fff;border-width:0 .14em .14em 0;
+  transform:rotate(45deg)}
+input.cbx:focus{outline:none;box-shadow:none}
+input.cbx:focus-visible{outline:2px solid var(--pico-primary-focus);outline-offset:1px}
+.stat{line-height:1.7}
+.sg{margin-right:1.1rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* Color-coded state chip (FC link / OSD pipeline). */
+.chip{display:inline-block;font-size:.78em;font-weight:600;padding:.05em .5em;
+  border-radius:.6em;margin-right:1.1rem;white-space:nowrap;
+  background:var(--pico-code-background-color);color:var(--pico-color)}
+.chip.ok{background:#1b5e20;color:#e8f5e9}
+.chip.amber{background:#6d4c00;color:#fff8e1}
+.chip.bad{background:#7f1d1d;color:#fdecea}
+.chip.grey{background:var(--pico-code-background-color);color:var(--pico-muted-color)}
+/* Tappable stat: dotted underline hints there's help; works on touch (no hover). */
+.sg[data-tip]{cursor:help;border-bottom:1px dotted var(--pico-muted-border-color)}
+.tip{position:absolute;z-index:1000;max-width:18rem;
+  background:var(--pico-card-background-color);color:var(--pico-color);
+  border:1px solid var(--pico-muted-border-color);border-radius:.4rem;
+  padding:.4rem .55rem;font-size:.78rem;line-height:1.35;
+  box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none}
+.ic{margin-right:.3em;opacity:.85}
+.ic svg{width:1em;height:1em;vertical-align:-.13em;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sechead .ic,article h3 .ic{opacity:1}
+button.btn{width:auto;display:inline-block;margin:.1rem 0 .1rem .5rem}
+.actions{text-align:right;margin:.35rem 0 .2rem}
+.hidden{display:none!important}  /* must beat button.btn{display:inline-block} */
+.apply-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem}
+.apply-row .btns{flex:none;white-space:nowrap}
+.actresult{transition:opacity .6s ease;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.actresult.fade{opacity:0}
+#goodbye{position:fixed;inset:0;background:var(--pico-background-color);
+  display:none;align-items:center;justify-content:center;text-align:center;
+  padding:2em;z-index:999}
+#goodbye article{max-width:24rem}
+</style>
+</head>
+<body>
+<main>
+<select id="lang"><option value="en">EN</option><option value="uk">UA</option></select>
+<h1>PiVid <span id="role"></span></h1>
+
+<article><h3 data-sec="system">System</h3><div id="sys" class="stat">…</div></article>
+<article><h3 data-sec="link">Link</h3><div id="link" class="stat">…</div></article>
+<article id="msparticle" class="hidden"><h3 data-sec="msp">MSP Telemetry</h3><div id="msp" class="stat">…</div></article>
+
+<label><input type="checkbox" role="switch" id="adv"> <span data-i18n="adv">Advanced settings</span></label>
+
+<form id="cfgform"></form>
+<div class="actions apply-row">
+  <span id="applyresult" class="actresult"></span>
+  <span class="btns">
+    <button id="applybtn" class="btn" data-i18n="apply">Apply</button>
+    <button id="resetbtn" class="btn secondary outline" data-i18n="reset">Reset</button>
+    <button id="exitbtn" class="btn hidden secondary" data-i18n="exit">Apply &amp; exit AP mode</button>
+  </span>
+</div>
+
+<div class="sechead" data-sec="ap">AP</div>
+<p class="help" data-i18n="ap_help">Config-mode hotspot password (this Pi's setup network).</p>
+<div id="apfields"></div>
+<div class="actions apply-row">
+  <span id="apresult" class="actresult"></span>
+  <span class="btns"><button id="netbtn" class="btn" data-i18n="ap_apply">Apply AP password</button></span>
+</div>
+
+<div class="sechead" data-sec="wifi client">WiFi client</div>
+<p class="help" data-i18n="wifi_help">The network this unit joins in normal operation (changing it drops your current LAN link).</p>
+<form id="wifiform">
+  <div class="cfgfield"><label class="lab" data-i18n="ssid">SSID</label><input name="ssid" data-i18n-ph="ssid_ph" placeholder="network name"></div>
+  <div class="cfgfield"><label class="lab" data-i18n="pass">Password</label>
+    <input name="psk" type="password" data-i18n-ph="pass_ph" placeholder="(unchanged / blank for open)">
+    <label class="cbxrow"><input type="checkbox" id="wifishow" class="cbx"><span data-i18n="show_pw">Show password</span></label>
+  </div>
+  <div class="actions apply-row">
+    <span id="wifiresult" class="actresult"></span>
+    <span class="btns"><button type="submit" class="btn" data-i18n="wifi_update">Update WiFi client</button></span>
+  </div>
+</form>
+</main>
+
+<div id="goodbye"><article><h3 data-i18n="gb_title">Settings applied</h3>
+  <p id="goodbyemsg" data-i18n="gb_msg">Returning to normal operation. You may close this tab.</p></article></div>
+
+<script>
+var SCHEMA=[], CFG={}, DEFAULTS={}, RECIPE_DEFAULTS={}, ROLE="", CONFIG_MODE=false;
+var FREQ_KEY="RF_FREQUENCY", FREQ_SCALE=1e6;          /* Hz <-> MHz */
+
+var LANG=(localStorage.getItem("pivid_lang"))||
+         (((navigator.language||"").toLowerCase().indexOf("uk")===0)?"uk":"en");
+
+/* ---- i18n. C stays the authoritative English source; uk maps overlay it.
+   RF/codec jargon (FLRC, FEC, sync word, binding phrase, droppable-P,
+   intra-refresh, RSSI, CRC, Mbps, dBm, AP, SSID...) is kept in English. ---- */
+var I18N={
+  en:{adv:"Advanced settings",apply:"Apply",reset:"Reset",
+    reset_done:"reset to defaults — review & Apply",exit:"Apply & exit AP mode",
+    ap_help:"Config-mode hotspot password (this Pi's setup network).",
+    ap_apply:"Apply AP password",
+    wifi_help:"The network this unit joins in normal operation (changing it drops your current LAN link).",
+    ssid:"SSID",pass:"Password",wifi_update:"Update WiFi client",show_pw:"Show password",
+    ssid_ph:"network name",pass_ph:"(unchanged / blank for open)",
+    gb_title:"Settings applied",gb_msg:"Returning to normal operation. You may close this tab.",
+    applying:"applying…",applying_ap:"applying AP…",
+    linkdown:"link down — waiting for other end to match",
+    linked_nocnt:"linked (no counters yet)",apply_failed:"apply failed (network)",
+    ok:"OK",failed:"FAILED",match:"↔ must match",sys_unavail:"system status unavailable",
+    wifi_alert:"WiFi client updated — applies when you leave config mode or reboot.",
+    build:"build",
+    osd_on:"OSD on",osd_off:"OSD off",telem_never:"never",
+    msp_no_telem:"no telemetry",msp_rx:"rx",msp_err:"err"},
+  uk:{adv:"Розширені налаштування",apply:"Застосувати",reset:"Скинути",
+    reset_done:"скинуто до типових — перевірте та застосуйте",exit:"Застосувати та вийти з режиму AP",
+    ap_help:"Пароль точки доступу режиму конфігурації (мережа налаштування цього Pi).",
+    ap_apply:"Застосувати пароль AP",
+    wifi_help:"Мережа, до якої цей пристрій під'єднується у звичайному режимі (зміна розірве поточний зв'язок LAN).",
+    ssid:"SSID",pass:"Пароль",wifi_update:"Оновити клієнт WiFi",show_pw:"Показати пароль",
+    ssid_ph:"назва мережі",pass_ph:"(без змін / порожнє — відкрита)",
+    gb_title:"Налаштування застосовано",gb_msg:"Повернення до звичайного режиму. Можна закрити цю вкладку.",
+    applying:"застосування…",applying_ap:"застосування AP…",
+    linkdown:"немає зв'язку — очікування іншої сторони",
+    linked_nocnt:"з'єднано (лічильників ще немає)",apply_failed:"помилка застосування (мережа)",
+    ok:"OK",failed:"ПОМИЛКА",match:"↔ має збігатися",sys_unavail:"статус системи недоступний",
+    wifi_alert:"Клієнт WiFi оновлено — застосується після виходу з режиму конфігурації або перезавантаження.",
+    build:"збірка",
+    osd_on:"OSD увімк.",osd_off:"OSD вимк.",telem_never:"немає",
+    msp_no_telem:"немає телеметрії",msp_rx:"отрим.",msp_err:"помилки"}
+};
+function L(k){var t=I18N[LANG];return (t&&t[k]!=null)?t[k]:I18N.en[k];}
+
+var SECTION_NAME={en:{camera:"camera",encoder:"encoder",fec:"fec",pairing:"pairing",
+    aqm:"aqm",rf:"rf",rx:"rx",player:"player",ap:"AP","wifi client":"WiFi client",system:"System",link:"Link",
+    msp:"MSP Telemetry",osd:"OSD"},
+  uk:{camera:"Камера",encoder:"Кодування",fec:"FEC",pairing:"Парування",
+    aqm:"AQM",rf:"RF",rx:"RX",player:"Плеєр",ap:"AP","wifi client":"Клієнт WiFi",system:"Система",link:"Зв'язок",
+    msp:"MSP-телеметрія",osd:"OSD"}};
+function tr_section(key){var m=SECTION_NAME[LANG]||SECTION_NAME.en;return m[key]!=null?m[key]:key;}
+
+/* Ukrainian field labels/descriptions, keyed by config key. Omitted keys fall
+   back to the English schema text (used for jargon-only labels). */
+var LABEL_UK={
+  FLRC_TX_LOW_THRESH:"Поріг низького TX FIFO",
+  RF_FREQUENCY:"Частота RF (МГц)",
+  RF_TX_POWER:"Потужність TX (dBm)",
+  WIDTH:"Ширина (px)",HEIGHT:"Висота (px)",FPS:"Частота кадрів (fps)",
+  BITRATE:"Бітрейт (bps)",ENCODER_RECIPE:"Рецепт кодування",
+  INTRA:"Період ключових кадрів",SLICE_MB:"Розмір слайса (макроблоки)",
+  DROPPABLE_LEN:"Довжина GOP droppable",SPS_REINJECT_MS:"Повторне надсилання SPS (мс)",
+  IDR_PERIOD:"Період IDR (кадри)",
+  FEC_M_ANCHOR:"Парність FEC: якорі (m)",FEC_M_REF:"Парність FEC: ref-P (m)",FEC_K:"Розмір блоку FEC (k)",
+  FORWARD_TO_PC:"Передавати відео на ПК",
+  PIVID_AP_PASSWORD:"Пароль AP конфігурації",
+  MSP_ENABLED:"MSP-телеметрія",MSP_UART_DEVICE:"Пристрій UART для MSP",
+  MSP_BAUD:"Швидкість MSP (бод)",
+  AQM:"Адаптивне скидання кадрів (AQM)"
+};
+var DESC_UK={
+  BINDING_PHRASE:"Спільні секретні слова (напр. tall-orange-falcon). TX і RX мають використовувати ОДНАКОВУ фразу: з неї формується 32-бітне sync word, що з'єднує канал. Застосування перезапускає демон для повторного парування.",
+  FLRC_CR:"Корекція помилок на боці чипа. 3/4 — надійний вибір; 1/1 жертвує надійністю заради ~20% більшої пропускної здатності. МАЄ збігатися з іншою стороною.",
+  FLRC_CRC_WIDTH:"Код поля FLRC CRC 0..3 (1 = 16-біт). МАЄ збігатися з іншою стороною.",
+  FLRC_PREAMBLE_LEN:"Код поля agc_pbl_len 0..15 (7 = 32-бітна преамбула). МАЄ збігатися з іншою стороною.",
+  FLRC_SYNC_LEN:"Код поля sync_len 0..3 (2 = 32-бітне syncword). МАЄ збігатися з іншою стороною.",
+  FLRC_PLD_LEN:"Обмеження довжини payload FLRC, байт 6..511 (511 = макс. пропускна здатність). МАЄ збігатися з іншою стороною.",
+  FLRC_TX_LOW_THRESH:"Поріг дозаповнення TX FIFO у байтах (0..511). Параметр тонкого налаштування; залиште як є, якщо не впевнені в таймінгах чипа.",
+  RF_FREQUENCY:"Несуча частота в МГц. Антена + PA узгоджені для S-діапазону (~1900-2500 МГц). МАЄ збігатися з іншою стороною. Застосування перезавантажує радіомодуль (короткий розрив на цьому вузлі).",
+  RF_TX_POWER:"Потужність передавача в dBm. HF PA максимум +12 dBm; менші значення економлять струм. Застосування перезавантажує радіомодуль.",
+  WIDTH:"Ширина захоплення камери в пікселях. Застосування перезапускає кодер (~1-2 с паузи потоку).",
+  HEIGHT:"Висота захоплення камери в пікселях. Застосування перезапускає кодер.",
+  FPS:"Частота захоплення кадрів. Застосування перезапускає кодер.",
+  BITRATE:"Цільовий бітрейт H.264 у біт/с. Тримайте нижче пропускної здатності каналу, інакше переповниться ring. Застосування перезапускає кодер.",
+  ENCODER_RECIPE:"Стратегія стійкості до втрат. droppable-P дає 1-кадровий збій при втраті; GDR використовує intra-refresh. Застосування перезапускає кодер.",
+  INTRA:"Період ключових кадрів / оновлення, у кадрах. Застосування перезапускає кодер.",
+  SLICE_MB:"Макроблоків на слайс; менші слайси локалізують пошкодження від втрат. Застосування перезапускає кодер.",
+  DROPPABLE_LEN:"Довжина ланцюга disposable-P. Застосування перезапускає кодер.",
+  SPS_REINJECT_MS:"Повторно надсилати SPS/PPS кожні N мс, щоб декодер, який під'єднався пізніше, відновився (0 = вимк). Застосування перезапускає кодер.",
+  FEC_M_ANCHOR:"Пакетів парності Reed-Solomon на блок якорів (IDR/SPS/PPS) — кадрів, втрата яких псує весь GOP. Більше = більший захист. Мін. 1 — FEC завжди увімкнено, ніколи не 0. Застосовується наживо. Приймач читає парність з кожного блоку, тож на іншому боці налаштування не потрібне.",
+  FEC_M_REF:"Пакетів парності Reed-Solomon на блок ref-P. Більшість парності припадає на якорі; ref-P несе меншу частку. Мін. 1 — FEC завжди увімкнено для кожного класу, ніколи не 0. Застосовується наживо.",
+  FEC_K:"Пакетів даних на блок FEC, 1..200. Застосовується наживо.",
+  IDR_PERIOD:"Для рецепта gdr_idr: примусовий IDR-ключкадр кожні N кадрів, щоб апаратний декодер RX міг синхронізуватися (0 = без примусового IDR). Застосування перезапускає кодер.",
+  FORWARD_TO_PC:"Оголошувати цей приймач у мережі (mDNS) і приймати віддалених глядачів pivid-player. Вимкнено = відео бачить лише локально підключений програвач. Застосовується наживо без переривання потоку.",
+  PIVID_AP_PASSWORD:"Пароль WPA2 для точки доступу режиму конфігурації (>=8 символів). Порожнє = відкрита точка. Набуває чинності НАСТУПНОГО разу при вході в режим конфігурації (зміна не розриває поточне з'єднання).",
+  MSP_ENABLED:"Зчитувати MSP-телеметрію Betaflight з UART польотного контролера і мультиплексувати її в канал. Застосування перезапускає передавач.",
+  MSP_UART_DEVICE:"Послідовний пристрій для MSP-зв'язку з польотним контролером. Застосування перезапускає передавач.",
+  MSP_BAUD:"Швидкість UART для MSP; узгодьте з польотним контролером (Betaflight використовує 115200). Застосування перезапускає передавач.",
+  AQM:"Проактивно скидати цілі відеокадри перед радіо, коли TX ring переповнюється, щоб приймач пропустив кадр чисто замість показу спотворення посеред кадру. Вимк. = ніколи не скидати. Застосування перезапускає передавач."
+};
+var ENUM_UK={
+  "FLRC_CR:1":"3/4 (FEC чипа, типово)","FLRC_CR:2":"1/1 (без FEC чипа)",
+  "ENCODER_RECIPE:droppable":"droppable-P (1-кадровий збій при втраті)",
+  "ENCODER_RECIPE:gdr":"GDR / intra-refresh (без IDR; лише програмне декодування)",
+  "ENCODER_RECIPE:gdr_idr":"Періодичний IDR (HW-декод; швидке під'єднання ≤IDR-період; типово)",
+  "ENCODER_RECIPE:gop":"Стандартний GOP (IDR щоразу при intra; запасний HW-декод)",
+  "FORWARD_TO_PC:0":"вимк.","FORWARD_TO_PC:1":"увімк.",
+  "MSP_ENABLED:0":"вимк.","MSP_ENABLED:1":"увімк.",
+  "AQM:0":"вимк.","AQM:enforce":"увімк. (скидати цілі кадри під час перевантаження каналу)"
+};
+function tr_label(m){return (LANG==="uk"&&LABEL_UK[m.key])||m.label;}
+function tr_desc(m){return (LANG==="uk"&&DESC_UK[m.key])||m.description;}
+function tr_enum(key,o){return (LANG==="uk"&&ENUM_UK[key+":"+o.value])||o.label;}
+
+var STAT_HELP={en:{
+    uptime:"How long this stream has been running, since the pivid daemon started. The link counters here accumulate over this time.",
+    rssi:"RSSI — received radio signal strength (dBm; closer to 0 is stronger).",
+    mbps:"Link throughput: live / theoretical max (megabits/sec). Max is the over-the-air ceiling for the current chip-FEC and packet settings, calibrated to measured throughput.",
+    vbudget:"Usable video budget = air max × k/(k+m): the share of the link left for video after software FEC. Keep the encoder bitrate under this.",
+    crc:"CRC errors — packets received corrupted (failed checksum) since module load.",
+    crc_drops:"Packets discarded after a CRC failure.",
+    ring:"RX ring-buffer-full events — the receiver briefly couldn't keep up.",
+    dropped:"TX frames dropped — the send ring was full (link can't drain fast enough).",
+    cpu:"CPU utilisation (%).",ram:"RAM used (%).",temp:"SoC temperature.",
+    pwr:"Power health (vcgencmd get_throttled). 'ok' = nominal; under-volt / throttled / freq capped / temp limit = happening now; a trailing * = it occurred since boot but has cleared. Under-voltage is a common cause of stream glitches.",
+    fclink:"Flight-controller MSP link state, as reported by the TX. OK = telemetry flowing; INIT = handshaking; TIMEOUT = no reply from the FC; UART ERR = serial fault.",
+    msprx:"Telemetry packets received from the TX and decoded successfully.",
+    msperr:"Telemetry packets received but dropped (RF-corrupted frame or a version/length decode failure).",
+    polls:"MSP poll responses successfully received from the flight controller.",
+    presets:"MSP parser resyncs (the response framing was lost and the parser restarted).",
+    mspcrc:"MSP responses dropped on a CRC mismatch.",
+    gridstate:"Telemetry-grid receive state. 'OK' = at least one full telemetry keyframe has reassembled from the link; 'no telemetry' = none received yet.",
+    gridframes:"Full OSD telemetry keyframes reassembled from the relayed grid fragments.",
+    gridfrags:"OSD telemetry-grid fragments received over the RF link.",
+    griddrop:"OSD keyframes dropped — fragments were lost before a full frame could reassemble.",
+    gridstale:"Grid fragments discarded as stale (superseded by a newer keyframe before completing).",
+    osdstate:"OSD pipeline state. repacketize = OSD off, RF packets passed straight through; transcode = decode→overlay→re-encode active; error = pipeline failed.",
+    osdframes:"Frames transcoded through the OSD overlay (0 unless OSD is on).",
+    osdidrs:"IDR (keyframe) frames emitted by the re-encoder.",
+    rxvpkts:"Video packets received over the RF link.",
+    telage:"Time since the last telemetry packet arrived from TX. 'never' = none received yet.",
+    vidrssi:"Per-packet RF signal strength of the received video link (dBm). 'n/a' until per-packet RSSI is available.",
+    vidlq:"Video link quality: share of expected video packets actually received (%). '--' when not yet known."},
+  uk:{
+    uptime:"Скільки часу триває цей потік, з моменту запуску демона pivid. Лічильники каналу тут накопичуються за цей час.",
+    rssi:"RSSI — потужність прийнятого радіосигналу (dBm; ближче до 0 — сильніший).",
+    mbps:"Пропускна здатність каналу: поточна / теоретичний максимум (мегабіт/с). Максимум — стеля в ефірі для поточних налаштувань chip-FEC і пакетів, відкалібрована за виміряною пропускною здатністю.",
+    vbudget:"Доступний бюджет відео = макс. ефіру × k/(k+m): частка каналу, що лишається для відео після програмного FEC. Тримайте бітрейт енкодера нижче цього значення.",
+    crc:"Помилки CRC — пакети, отримані пошкодженими (невірна контрольна сума), з моменту завантаження модуля.",
+    crc_drops:"Пакети, відкинуті після помилки CRC.",
+    ring:"Події переповнення ring-буфера RX — приймач на мить не встигав.",
+    dropped:"Відкинуті кадри TX — буфер відправлення був повним (канал не встигає спорожнюватися).",
+    cpu:"Завантаження CPU (%).",ram:"Використано RAM (%).",temp:"Температура SoC.",
+    pwr:"Стан живлення (vcgencmd get_throttled). 'ok' = норма; under-volt / throttled / freq capped / temp limit = активне зараз; зірочка * = траплялося після завантаження, але вже минуло. Недостатня напруга — часта причина збоїв потоку.",
+    fclink:"Стан MSP-зв'язку з польотним контролером (за даними TX). OK = телеметрія йде; INIT = рукостискання; TIMEOUT = немає відповіді від FC; UART ERR = помилка послідовного порту.",
+    msprx:"Пакети телеметрії, отримані від TX і успішно декодовані.",
+    msperr:"Пакети телеметрії, отримані, але відкинуті (пошкоджений RF-кадр або помилка версії/довжини).",
+    polls:"Успішно отримані MSP-відповіді від польотного контролера.",
+    presets:"Ресинхронізації MSP-парсера (кадрування відповіді втрачено, парсер перезапущено).",
+    mspcrc:"MSP-відповіді, відкинуті через невідповідність CRC.",
+    gridstate:"Стан прийому сітки телеметрії. 'OK' = щонайменше один повний ключкадр телеметрії зібрано з каналу; 'no telemetry' = ще нічого не отримано.",
+    gridframes:"Повні ключкадри телеметрії OSD, зібрані з ретрансльованих фрагментів сітки.",
+    gridfrags:"Фрагменти сітки телеметрії OSD, отримані по RF-каналу.",
+    griddrop:"Відкинуті ключкадри OSD — фрагменти втрачено до того, як зібрався повний кадр.",
+    gridstale:"Фрагменти сітки відкинуті як застарілі (заміщені новішим ключкадром до завершення).",
+    osdstate:"Стан конвеєра OSD. repacketize = OSD вимкнено, RF-пакети проходять напряму; transcode = декодування→накладання→перекодування активне; error = збій конвеєра.",
+    osdframes:"Кадри, перекодовані через накладання OSD (0, якщо OSD вимкнено).",
+    osdidrs:"Кадри IDR (ключові), згенеровані перекодувальником.",
+    rxvpkts:"Відеопакети, отримані по RF-каналу.",
+    telage:"Час від останнього пакета телеметрії від TX. 'never' = ще нічого не отримано.",
+    vidrssi:"Потужність RF-сигналу прийнятого відеоканалу на пакет (dBm). 'n/a', доки потужність на пакет недоступна.",
+    vidlq:"Якість відеоканалу: частка очікуваних відеопакетів, що дійсно отримані (%). '--', коли ще невідомо."}};
+function SH(k){var m=STAT_HELP[LANG]||STAT_HELP.en;return m[k];}
+
+/* Monochrome line icons (inherit text colour -> white on the dark theme). */
+var ICONS={
+  cpu:'<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>',
+  ram:'<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="1"/><path d="M7 16v3M12 16v3M17 16v3"/></svg>',
+  temp:'<svg viewBox="0 0 24 24"><path d="M14 14.5V5a2 2 0 0 0-4 0v9.5a3.5 3.5 0 1 0 4 0z"/></svg>',
+  rssi:'<svg viewBox="0 0 24 24"><path d="M5 20v-4M11 20v-9M17 20v-14"/></svg>',
+  speed:'<svg viewBox="0 0 24 24"><path d="M3 13h4l3 7 4-15 3 8h4"/></svg>',
+  clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>',
+  warn:'<svg viewBox="0 0 24 24"><path d="M12 3l9 17H3z"/><path d="M12 10v4M12 17v.5"/></svg>',
+  camera:'<svg viewBox="0 0 24 24"><path d="M3 7h4l2-2h6l2 2h4v12H3z"/><circle cx="12" cy="13" r="3.3"/></svg>',
+  film:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 15h18M8 4v16M16 4v16"/></svg>',
+  shield:'<svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V6z"/></svg>',
+  link:'<svg viewBox="0 0 24 24"><path d="M9 15l6-6M8.5 11.5l-2 2a3 3 0 0 0 4 4l2-2M15.5 12.5l2-2a3 3 0 0 0-4-4l-2 2"/></svg>',
+  broadcast:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.5 7.5a6 6 0 0 0 0 9M16.5 7.5a6 6 0 0 1 0 9M4.7 4.7a10 10 0 0 0 0 14.6M19.3 4.7a10 10 0 0 1 0 14.6"/></svg>',
+  monitor:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></svg>',
+  overlay:'<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
+  gauge:'<svg viewBox="0 0 24 24"><path d="M3 17a9 9 0 0 1 18 0"/><path d="M12 17l5-4"/><circle cx="12" cy="17" r="1.3"/></svg>',
+  hotspot:'<svg viewBox="0 0 24 24"><circle cx="12" cy="15" r="2"/><path d="M8.5 11.5a5 5 0 0 1 7 0M5.5 8.5a9 9 0 0 1 13 0"/></svg>',
+  wifi:'<svg viewBox="0 0 24 24"><path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="19" r="1"/></svg>'
+};
+var SECTION_ICON={camera:"camera",encoder:"film",fec:"shield",pairing:"link",
+  aqm:"warn",rf:"broadcast",rx:"monitor",player:"monitor",ap:"hotspot","wifi client":"wifi",system:"cpu",link:"speed",
+  msp:"gauge",osd:"overlay"};
+function ic(name){var s=el("span",{class:"ic"});s.innerHTML=ICONS[name]||"";return s;}
+
+function el(t,a,txt){var e=document.createElement(t);if(a)for(var k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;return e;}
+function isFreq(k){return k===FREQ_KEY;}
+
+var SECTION_ORDER=["camera","encoder","aqm","fec","pairing","rf","player"];
+
+var DEPS={
+  FEC_K:          {key:"FEC_M_ANCHOR",  notVals:["0"]}
+};
+
+function field(m){
+  var wrap=el("div",{class:"cfgfield"});wrap.dataset.cls=m.ui_class;wrap.dataset.key=m.key;
+  var lab=el("label",{class:"lab"},tr_label(m));
+  lab.appendChild(el("span",{class:"badge"},m.tier));
+  if(m.must_match)lab.appendChild(el("span",{class:"match",title:"must match the other end"},L("match")));
+  var input;
+  if(m.type==="enum"){
+    input=el("select");
+    m.enum.forEach(function(o){input.appendChild(el("option",{value:o.value},tr_enum(m.key,o)));});
+  }else{
+    input=el("input",{type:m.type==="int"?"number":"text"});
+    if(m.type==="int"&&!(m.min===0&&m.max===0)){
+      input.min=isFreq(m.key)?(m.min/FREQ_SCALE):m.min;
+      input.max=isFreq(m.key)?(m.max/FREQ_SCALE):m.max;
+    }
+    if(isFreq(m.key))input.step="0.1";
+  }
+  input.name=m.key;
+  var cur=(CFG[m.key]!=null)?CFG[m.key]:"";
+  input.value=(isFreq(m.key)&&cur!=="")?(Number(cur)/FREQ_SCALE):cur;
+  wrap.appendChild(lab);
+  wrap.appendChild(input);
+  wrap.appendChild(el("div",{class:"help"},tr_desc(m)));
+  return wrap;
+}
+
+function sectionRank(sec){var i=SECTION_ORDER.indexOf(sec);return i<0?999:i;}
+function setHeader(elm,key){
+  elm.innerHTML="";
+  var iconName=SECTION_ICON[key];if(iconName)elm.appendChild(ic(iconName));
+  elm.appendChild(document.createTextNode(tr_section(key)));
+}
+function sechead(key){var h=el("div",{class:"sechead"});setHeader(h,key);return h;}
+function decorateStaticHeaders(){
+  document.querySelectorAll("[data-sec]").forEach(function(h){setHeader(h,h.dataset.sec);});
+}
+function applyStaticI18n(){
+  document.querySelectorAll("[data-i18n]").forEach(function(e){e.textContent=L(e.dataset.i18n);});
+  document.querySelectorAll("[data-i18n-ph]").forEach(function(e){e.placeholder=L(e.dataset.i18nPh);});
+}
+
+function renderForm(){
+  var f=document.getElementById("cfgform");f.innerHTML="";
+  var bySection={};
+  SCHEMA.forEach(function(m){
+    if(m.section==="network")return;
+    (bySection[m.section]=bySection[m.section]||[]).push(m);
+  });
+  Object.keys(bySection).sort(function(a,b){return sectionRank(a)-sectionRank(b);}).forEach(function(sec){
+    f.appendChild(sechead(sec));
+    bySection[sec].forEach(function(m){f.appendChild(field(m));});
+  });
+  refresh();
+}
+function renderAP(){
+  var n=document.getElementById("apfields");n.innerHTML="";
+  SCHEMA.filter(function(m){return m.section==="network";}).forEach(function(m){n.appendChild(field(m));});
+}
+
+function valOf(key){var i=document.querySelector('#cfgform [name="'+key+'"]');return i?i.value:null;}
+function depVisible(key){
+  var d=DEPS[key];if(!d)return true;
+  var v=valOf(d.key);if(v==null)return true;
+  if(d.vals)return d.vals.indexOf(v)>=0;
+  if(d.notVals)return d.notVals.indexOf(v)<0;
+  return true;
+}
+function curRecipe(){return valOf("ENCODER_RECIPE");}
+/* recipe-managed field: meta = RECIPE_DEFAULTS[recipe][key] = {v,show}.
+ * Non-recipe keys have no meta -> always recipe-visible. */
+function recipeMeta(key){var rc=curRecipe();var rd=(rc!=null&&RECIPE_DEFAULTS[rc])||null;return (rd&&rd[key])||null;}
+function recipeShows(key){var m=recipeMeta(key);return m?m.show!==false:true;}
+function refresh(){
+  var adv=document.getElementById("adv").checked;
+  document.querySelectorAll("#cfgform .cfgfield").forEach(function(w){
+    var hideAdv=(w.dataset.cls==="advanced" && !adv);
+    var hideDep=!depVisible(w.dataset.key) || !recipeShows(w.dataset.key);
+    w.classList.toggle("hidden", hideAdv||hideDep);
+  });
+  document.querySelectorAll("#cfgform .sechead").forEach(function(h){
+    var any=false,n=h.nextElementSibling;
+    while(n&&!n.classList.contains("sechead")){
+      if(n.classList.contains("cfgfield")&&!n.classList.contains("hidden"))any=true;
+      n=n.nextElementSibling;
+    }
+    h.classList.toggle("hidden",!any);
+  });
+}
+
+function fieldValue(i){
+  var v=i.value;
+  if(isFreq(i.name)){var hz=Math.round(parseFloat(v)*FREQ_SCALE);if(!isFinite(hz))return null;v=String(hz);}
+  return v;
+}
+function collect(){
+  var out={};
+  document.querySelectorAll("#cfgform [name]").forEach(function(i){
+    var m=recipeMeta(i.name);
+    if(m){
+      /* recipe meta takes precedence over DEPS visibility: a recipe-managed key
+         is always submitted (DEPS-hidden does not suppress it).
+         hidden -> force the recipe value (never stale);
+         shown -> submit the form value the user may have tuned. */
+      if(m.show===false){ out[i.name]=m.v; }
+      else { var fv=fieldValue(i); if(fv!=null) out[i.name]=fv; }
+      return;
+    }
+    /* non-recipe key: hidden -> omit (preserve prior); else submit. */
+    if(i.closest(".cfgfield").classList.contains("hidden"))return;
+    var v=fieldValue(i);if(v!=null)out[i.name]=v;
+  });
+  return out;
+}
+/* Fill the main config form with factory defaults (incl. the pairing phrase).
+ * Only touches #cfgform -- the AP password (#apfields) and WiFi client
+ * (#wifiform) are separate forms and are left untouched. Client-side only;
+ * the user reviews and clicks Apply to persist. */
+function resetForm(){
+  document.querySelectorAll("#cfgform [name]").forEach(function(i){
+    var v=DEFAULTS[i.name]; if(v==null)return;
+    i.value=(isFreq(i.name)&&v!=="")?(Number(v)/FREQ_SCALE):v;
+  });
+  refresh();
+  setResult("applyresult",L("reset_done"),true);
+}
+/* When the user picks an encoder recipe, fill the dependent encoder/FEC fields
+ * with that recipe's defaults (overwrite all dependents; the user reviews and
+ * may override before Apply). All field writes complete synchronously here,
+ * THEN refresh() re-evaluates visibility so the map sees the injected state. */
+function autofillRecipe(){
+  var sel=document.querySelector('#cfgform [name="ENCODER_RECIPE"]');
+  if(!sel)return;
+  var d=RECIPE_DEFAULTS[sel.value];
+  if(d){
+    Object.keys(d).forEach(function(k){
+      var i=document.querySelector('#cfgform [name="'+k+'"]');
+      if(i)i.value=d[k].v;
+    });
+  }
+  refresh();
+}
+
+function postJSON(url,obj){
+  return fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(obj)});
+}
+/* Per-button status line, each with its own fade timer (stored on the element).
+ * fade=true auto-dismisses it after a few seconds
+ * (used for successful applies); transient/failed messages stay put. */
+function setResult(id,txt,fade){
+  var e=document.getElementById(id);
+  if(e._ft){clearTimeout(e._ft);e._ft=null;}
+  e.classList.remove("fade");
+  e.textContent=txt;
+  if(fade)e._ft=setTimeout(function(){e.classList.add("fade");},3000);
+}
+function showResult(id,d){
+  setResult(id,(d.ok?L("ok"):L("failed"))+" — "+(d.action_taken||"no change"),d.ok);
+}
+/* Re-populate the config form's input values from a fresh /api/config payload.
+ * Value-only (no re-render) so DOM/scroll/focus survive. Used after Apply so the
+ * form shows what was actually STORED -- notably RF_FREQUENCY, which the backend
+ * snaps down to the 4 MHz FE-cal grid (e.g. entering 2030 stores/shows 2028). */
+function syncFormValues(values){
+  if(!values)return;
+  CFG=values;
+  document.querySelectorAll("#cfgform [name]").forEach(function(i){
+    var v=CFG[i.name]; if(v==null)return;
+    i.value=(isFreq(i.name)&&v!=="")?(Number(v)/FREQ_SCALE):v;
+  });
+  refresh();
+}
+function apply(){
+  setResult("applyresult",L("applying"),false);
+  postJSON("/api/apply",collect()).then(function(r){return r.json();})
+    .then(function(d){
+      showResult("applyresult",d);
+      /* reflect the persisted (snapped) values back into the form */
+      return fetch("/api/config").then(function(r){return r.json();})
+        .then(function(c){syncFormValues(c.values);});
+    })
+    .catch(function(){setResult("applyresult",L("apply_failed"),false);});
+}
+function applyAP(){
+  var out={};
+  document.querySelectorAll("#apfields [name]").forEach(function(i){out[i.name]=i.value;});
+  setResult("apresult",L("applying_ap"),false);
+  postJSON("/api/apply",out).then(function(r){return r.json();})
+    .then(function(d){showResult("apresult",d);})
+    .catch(function(){setResult("apresult",L("apply_failed"),false);});
+}
+function exitConfig(){
+  POLL.stop();
+  postJSON("/api/exit",collect()).then(function(){
+    document.getElementById("goodbye").style.display="flex";
+    setTimeout(function(){try{window.close();}catch(e){}},800);
+  }).catch(function(){document.getElementById("goodbye").style.display="flex";});
+}
+
+var POLL={fns:[],iv:null,ac:[],
+  add:function(fn){this.fns.push(fn);},
+  tick:function(){var self=this;self.ac=[];self.fns.forEach(function(fn){fn(self);});},
+  fetch:function(url,ms){var ac=new AbortController();this.ac.push(ac);
+    var t=setTimeout(function(){ac.abort();},ms);
+    return fetch(url,{signal:ac.signal}).then(function(r){clearTimeout(t);return r.json();});},
+  start:function(){this.tick();this.iv=setInterval(this.tick.bind(this),1500);},
+  stop:function(){if(this.iv)clearInterval(this.iv);this.ac.forEach(function(a){try{a.abort();}catch(e){}});}
+};
+
+function fmtDur(s){s=Math.floor(s);if(s<60)return s+"s";
+  var m=Math.floor(s/60);if(m<60)return m+"m";
+  var h=Math.floor(m/60);return h+"h "+("0"+(m%60)).slice(-2)+"m";}
+/* Decode `vcgencmd get_throttled` bits: 0=under-volt now, 1=freq capped now,
+ * 2=throttled now, 3=soft-temp now; 16..19 = same, since boot (sticky). */
+function throttleLabel(b){
+  if(b==null)return null;
+  var now=(b&1)?"under-volt":(b&4)?"throttled":(b&2)?"freq capped":(b&8)?"temp limit":"ok";
+  return (now==="ok"&&(b&0xF0000))?"ok*":now;
+}
+function statSpan(iconName,txt,title){
+  var w=el("span",{class:"sg"});
+  if(title){w.title=title;w.setAttribute("data-tip",title);}  /* title=desktop hover, data-tip=touch tap */
+  w.appendChild(ic(iconName));w.appendChild(document.createTextNode(" "+txt));return w;
+}
+/* Touch-friendly tooltip: stat panels re-render each poll tick, so use a single
+ * floating bubble + delegated click rather than per-element listeners. Tap a
+ * stat to show its help; tap the same stat or anywhere else to dismiss. */
+var TIP=null,TIPTXT=null;
+function hideTip(){if(TIP)TIP.classList.add("hidden");TIPTXT=null;}
+function showTip(target){
+  var txt=target.getAttribute("data-tip");if(!txt)return;
+  if(!TIP){TIP=el("div",{class:"tip hidden"});document.body.appendChild(TIP);}
+  if(TIPTXT===txt&&!TIP.classList.contains("hidden")){hideTip();return;}  /* toggle off */
+  TIP.textContent=txt;TIPTXT=txt;TIP.classList.remove("hidden");
+  var r=target.getBoundingClientRect(),tw=TIP.offsetWidth,th=TIP.offsetHeight;
+  var left=Math.min(Math.max(6,r.left),window.innerWidth-tw-6);
+  var top=r.bottom+6;
+  if(top+th>window.innerHeight-6&&r.top-th-6>0)top=r.top-th-6;  /* flip above if no room below */
+  TIP.style.left=(left+window.scrollX)+"px";TIP.style.top=(top+window.scrollY)+"px";
+}
+document.addEventListener("click",function(e){
+  var sg=e.target.closest&&e.target.closest(".sg[data-tip]");
+  if(sg)showTip(sg);else hideTip();
+});
+function renderLink(p){
+  p.fetch("/api/stats",1200).then(function(d){
+    var Lk=document.getElementById("link");Lk.innerHTML="";
+    if(!d.have){Lk.textContent=L("linkdown");return;}
+    if(d.uptime_s!=null)Lk.appendChild(statSpan("clock",fmtDur(d.uptime_s),SH("uptime")));
+    if(d.rssi_dbm_neg!=null)Lk.appendChild(statSpan("rssi","-"+d.rssi_dbm_neg+" dBm",SH("rssi")));
+    if(d.kbps!=null){var sp=(d.kbps/1000).toFixed(2);
+      if(d.max_kbps!=null)sp+=" / "+(d.max_kbps/1000).toFixed(2);
+      Lk.appendChild(statSpan("speed",sp+" Mbps",SH("mbps")));}
+    if(d.video_kbps!=null)Lk.appendChild(statSpan("film",(d.video_kbps/1000).toFixed(2)+" Mbps",SH("vbudget")));
+    if(d.k_crc!=null)Lk.appendChild(statSpan("warn","crc "+d.k_crc,SH("crc")));
+    if(d.k_crc_drops!=null)Lk.appendChild(statSpan("warn","drops "+d.k_crc_drops,SH("crc_drops")));
+    if(d.k_ring_full!=null)Lk.appendChild(statSpan("warn","ring "+d.k_ring_full,SH("ring")));
+    if(d.dropped_full!=null)Lk.appendChild(statSpan("warn","drops "+d.dropped_full,SH("dropped")));
+    if(!Lk.childNodes.length)Lk.textContent=L("linked_nocnt");
+  }).catch(function(){document.getElementById("link").textContent=L("linkdown");});
+}
+function renderSys(p){
+  p.fetch("/api/sysstatus",1200).then(function(d){
+    var s=document.getElementById("sys");s.innerHTML="";
+    s.appendChild(statSpan("cpu","CPU "+d.cpu_pct+"%",SH("cpu")));
+    s.appendChild(statSpan("ram","RAM "+d.mem_pct+"%",SH("ram")));
+    s.appendChild(statSpan("temp",(d.temp_c<0?"n/a":d.temp_c+"°C"),SH("temp")));
+    var pwr=throttleLabel(d.throttled);
+    if(pwr!=null)s.appendChild(statSpan((pwr==="ok"||pwr==="ok*")?"bolt":"warn","PWR "+pwr,SH("pwr")));
+    s.appendChild(el("div",{class:"help"},(d.kernel||"")+" · "+L("build")+" "+(d.version||"?")));
+    if(d.config_mode!=null)
+      document.getElementById("exitbtn").classList.toggle("hidden", !d.config_mode);
+  }).catch(function(){document.getElementById("sys").textContent=L("sys_unavail");});
+}
+
+/* Color-coded state chip (FC link / OSD pipeline state). */
+function stateChip(txt,cls,title){
+  var w=el("span",{class:"chip "+cls},txt);
+  if(title){w.title=title;w.setAttribute("data-tip",title);w.classList.add("sg");}
+  return w;
+}
+/* Numeric MSP fc_link_state -> {label, css-class}. */
+var FC_STATE=[{l:"OK",c:"ok"},{l:"INIT",c:"amber"},{l:"TIMEOUT",c:"bad"},
+              {l:"UART ERR",c:"bad"},{l:"UNKNOWN",c:"grey"}];
+function renderMSP(p){
+  p.fetch("/api/stats",1200).then(function(d){
+    var art=document.getElementById("msparticle"),box=document.getElementById("msp");
+    var isRx=d.msp_rx_ok!=null;
+    /* Show if either the TX poll-health key or the RX receive-counter key is present. */
+    if(d.msp_fc_link_state==null && !isRx){art.classList.add("hidden");return;}
+    art.classList.remove("hidden");box.innerHTML="";
+    if(isRx){
+      /* RX variant: OSD-grid receive health. The relayed grid has no per-frame
+         age, so base liveness on whether any keyframe has reassembled. */
+      var recv=(d.osd_frames_done!=null&&d.osd_frames_done>0);
+      box.appendChild(stateChip(recv?L("ok"):L("msp_no_telem"),recv?"ok":"grey",SH("gridstate")));
+      if(d.osd_frames_done!=null)box.appendChild(statSpan("broadcast","frames "+d.osd_frames_done,SH("gridframes")));
+      if(d.osd_frags_rx!=null)box.appendChild(statSpan("speed","frags "+d.osd_frags_rx,SH("gridfrags")));
+      if(d.osd_frames_dropped!=null)box.appendChild(statSpan("warn","drop "+d.osd_frames_dropped,SH("griddrop")));
+      if(d.osd_frags_stale!=null)box.appendChild(statSpan("warn","stale "+d.osd_frags_stale,SH("gridstale")));
+      return;
+    }
+    /* TX variant: poll health (unchanged). */
+    var st=FC_STATE[d.msp_fc_link_state]||FC_STATE[4];
+    box.appendChild(stateChip(st.l,st.c,SH("fclink")));
+    if(d.msp_polls_ok!=null)box.appendChild(statSpan("speed","polls "+d.msp_polls_ok,SH("polls")));
+    if(d.msp_parse_resets!=null)box.appendChild(statSpan("warn","resets "+d.msp_parse_resets,SH("presets")));
+    if(d.msp_crc_failures!=null)box.appendChild(statSpan("warn","crc "+d.msp_crc_failures,SH("mspcrc")));
+  }).catch(function(){});
+}
+
+function loadWifi(){
+  fetch("/api/wifi").then(function(r){return r.json();}).then(function(d){
+    if(d&&d.ssid){var i=document.querySelector('#wifiform [name="ssid"]');if(i)i.value=d.ssid;}
+  }).catch(function(){});
+}
+
+function applyLang(){
+  document.documentElement.lang=LANG;
+  document.getElementById("lang").value=LANG;
+  applyStaticI18n();
+  decorateStaticHeaders();
+  if(SCHEMA.length){renderForm();renderAP();}
+  POLL.tick();   /* refresh stat panels in the new language at once */
+}
+
+function boot(){
+  Promise.all([fetch("/api/schema").then(function(r){return r.json();}),
+               fetch("/api/config").then(function(r){return r.json();}),
+               fetch("/api/defaults").then(function(r){return r.json();}),
+               fetch("/api/recipe-defaults").then(function(r){return r.json();})])
+  .then(function(res){
+    SCHEMA=res[0]; var c=res[1]; CFG=c.values||{}; DEFAULTS=(res[2]&&res[2].values)||{};
+    RECIPE_DEFAULTS=(res[3]&&res[3].defaults)||{};
+    ROLE=c.role||""; CONFIG_MODE=!!c.config_mode;
+    document.getElementById("role").textContent="("+ROLE.toUpperCase()+")";
+    if(CONFIG_MODE)document.getElementById("exitbtn").classList.remove("hidden");
+    renderForm();
+    renderAP();
+    decorateStaticHeaders();
+    applyStaticI18n();
+    loadWifi();
+    POLL.add(renderLink);POLL.add(renderSys);
+    POLL.add(renderMSP);POLL.start();
+  });
+}
+
+document.getElementById("lang").addEventListener("change",function(e){
+  LANG=e.target.value; try{localStorage.setItem("pivid_lang",LANG);}catch(_){}
+  applyLang();
+});
+document.getElementById("adv").addEventListener("change",refresh);
+document.getElementById("cfgform").addEventListener("change",function(e){
+  if(e.target&&e.target.name==="ENCODER_RECIPE"){autofillRecipe();}
+  else{refresh();}
+});
+document.getElementById("applybtn").addEventListener("click",apply);
+document.getElementById("resetbtn").addEventListener("click",resetForm);
+document.getElementById("exitbtn").addEventListener("click",exitConfig);
+document.getElementById("netbtn").addEventListener("click",applyAP);
+document.getElementById("wifishow").addEventListener("change",function(e){
+  var i=document.querySelector('#wifiform [name="psk"]');if(!i)return;
+  /* Toggling an input's type between password/text makes WebKit (Safari + the
+   * captive-portal mini-browser) re-run its autofill layout and scroll the page
+   * to the top. Re-assert scroll in the same tick so it never paints. */
+  var x=window.scrollX,y=window.scrollY;
+  i.type=e.target.checked?"text":"password";
+  window.scrollTo(x,y);
+});
+/* Inline status like every other Apply button -- a JS alert() is silently
+ * suppressed by the iOS/macOS captive-portal mini-browser, so the WiFi update
+ * appeared to do nothing there. */
+document.getElementById("wifiform").addEventListener("submit",function(e){
+  e.preventDefault();
+  var fd=new FormData(e.target);
+  setResult("wifiresult",L("applying"),false);
+  postJSON("/api/wifi",{ssid:fd.get("ssid"),psk:fd.get("psk")}).then(function(r){return r.json();})
+    .then(function(d){
+      if(d&&d.ok)setResult("wifiresult",L("wifi_alert"),true);
+      else setResult("wifiresult",L("failed")+(d&&d.reason?" — "+d.reason:""),false);
+    }).catch(function(){setResult("wifiresult",L("apply_failed"),false);});
+});
+document.documentElement.lang=LANG;
+document.getElementById("lang").value=LANG;
+boot();
+</script>
+</body>
+</html>

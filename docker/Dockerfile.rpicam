@@ -1,0 +1,131 @@
+# pivid-rpicam-builder: cross-compile rpicam-apps v1.12.0 for arm64 (Debian trixie),
+# pinned against the TX Pi's libcamera 0.7.1+rpt20260429 so the artifacts are a
+# drop-in for /usr/lib/aarch64-linux-gnu/librpicam_app.so.1.12.0 + /usr/bin/rpicam-vid.
+#
+# Verify the Pi's versions before relying on the output:
+#   ssh root@<tx-pi> 'dpkg -l | grep -E "rpicam|libcamera"'
+FROM debian:trixie
+
+ARG RPICAM_GIT_REF=v1.12.0
+# NOTE: Pi runs 0.7.1+rpt20260429-1; pool now has 0.7.1+rpt20260609-1 (same soname 0.7.1)
+ARG LIBCAMERA_VER=0.7.1+rpt20260609-1
+
+# Native amd64 tools + cross toolchain.
+# NOTE: we do NOT use dpkg --add-architecture arm64 because the RPi trixie repo ships
+# libc6:arm64=2.41-12+rpt1+deb13u3 which breaks against the stock amd64 libc6 (different
+# patch suffix). Instead we download arm64 .debs and extract them into a sysroot.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        gcc g++ make pkg-config git file \
+        meson ninja-build python3 \
+        crossbuild-essential-arm64 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Add RPi repo (trusted=yes: trixie's sqv rejects RPi key's SHA1-signed cert, build-only).
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+ && echo "deb [arch=arm64 trusted=yes] https://archive.raspberrypi.com/debian trixie main" \
+      > /etc/apt/sources.list.d/raspberrypi.list \
+ && dpkg --add-architecture arm64 \
+ && apt-get update -o Acquire::AllowInsecureRepositories=true \
+ && rm -rf /var/lib/apt/lists/*
+
+# Build an arm64 sysroot by downloading + extracting arm64 .debs (avoids multiarch
+# libc6 conflict between RPi's +rpt1 and stock Debian amd64 versions).
+#
+# Only libcamera is version-pinned -- it is the one ABI that must match the Pi.
+# The rest (boost/jpeg/tiff+its transitive deps/png/exif/glib/...) are intentionally
+# UNPINNED: they are build-time-only inputs, not coupled to the Pi's runtime ABI, so
+# minor archive drift is harmless. apt-get download does NOT pull transitive deps, so
+# libtiff's Requires.private chain (webp/zstd/lzma/Lerc/deflate/zlib + jbig) is listed
+# explicitly below; a future libtiff bump may need this list refreshed.
+ENV SYSROOT=/opt/sysroot-arm64
+RUN mkdir -p ${SYSROOT} /tmp/arm64debs \
+ && apt-get update -o Acquire::AllowInsecureRepositories=true \
+ && cd /tmp/arm64debs \
+ && apt-get download --allow-unauthenticated \
+        "libcamera-dev:arm64=${LIBCAMERA_VER}" \
+        "libcamera0.7:arm64=${LIBCAMERA_VER}" \
+        libboost1.83-dev:arm64 \
+        libboost-program-options1.83-dev:arm64 \
+        libboost-program-options1.83.0:arm64 \
+        libjpeg62-turbo-dev:arm64 libjpeg62-turbo:arm64 \
+        libtiff-dev:arm64 libtiff6:arm64 \
+        zlib1g-dev:arm64 zlib1g:arm64 \
+        liblzma-dev:arm64 liblzma5:arm64 \
+        libzstd-dev:arm64 libzstd1:arm64 \
+        libwebp-dev:arm64 libwebp7:arm64 libsharpyuv0:arm64 libsharpyuv-dev:arm64 \
+        libdeflate-dev:arm64 libdeflate0:arm64 \
+        liblerc-dev:arm64 liblerc4:arm64 \
+        libjbig-dev:arm64 libjbig0:arm64 \
+        libpng-dev:arm64 libpng16-16t64:arm64 \
+        libexif-dev:arm64 libexif12:arm64 \
+        libglib2.0-dev:arm64 libglib2.0-0t64:arm64 \
+        libgnutls28-dev:arm64 \
+        libudev-dev:arm64 \
+        libyaml-dev:arm64 \
+ && for f in *.deb; do dpkg-deb -x "$f" ${SYSROOT}; done \
+ && rm -rf /tmp/arm64debs \
+ && rm -rf /var/lib/apt/lists/*
+
+# Fix up absolute symlinks in the sysroot so the cross linker finds them.
+RUN find ${SYSROOT} -type l | while read link; do \
+      target=$(readlink "$link"); \
+      if [ "${target#/}" != "$target" ]; then \
+        ln -sf "${SYSROOT}${target}" "$link"; \
+      fi; \
+    done \
+ && ln -sf libboost_program_options.so.1.83.0 \
+      ${SYSROOT}/usr/lib/aarch64-linux-gnu/libboost_program_options.so
+
+# PKG_CONFIG_SYSROOT_DIR makes pkg-config prepend ${SYSROOT} to the -I/-L paths it
+# emits from the arm64 .pc files, so cflags/libs point into the sysroot, not the host.
+ENV PKG_CONFIG_PATH=${SYSROOT}/usr/lib/aarch64-linux-gnu/pkgconfig \
+    PKG_CONFIG_LIBDIR=${SYSROOT}/usr/lib/aarch64-linux-gnu/pkgconfig \
+    PKG_CONFIG_SYSROOT_DIR=${SYSROOT} \
+    BOOST_ROOT=${SYSROOT}/usr \
+    BOOST_INCLUDEDIR=${SYSROOT}/usr/include \
+    BOOST_LIBRARYDIR=${SYSROOT}/usr/lib/aarch64-linux-gnu
+
+# Shallow clone of the pinned tag.
+RUN git clone --depth=1 --branch ${RPICAM_GIT_REF} \
+      https://github.com/raspberrypi/rpicam-apps.git /opt/rpicam-apps
+
+# Meson cross file for aarch64 with sysroot.
+RUN printf '%s\n' \
+  '[binaries]' \
+  "c = 'aarch64-linux-gnu-gcc'" \
+  "cpp = 'aarch64-linux-gnu-g++'" \
+  "ar = 'aarch64-linux-gnu-ar'" \
+  "strip = 'aarch64-linux-gnu-strip'" \
+  "pkg-config = 'pkg-config'" \
+  '[properties]' \
+  "sys_root = '${SYSROOT}'" \
+  "boost_root = '${SYSROOT}/usr'" \
+  '[built-in options]' \
+  "c_args = ['-mcpu=cortex-a53', '-I${SYSROOT}/usr/include/aarch64-linux-gnu', '-I${SYSROOT}/usr/include']" \
+  "cpp_args = ['-mcpu=cortex-a53', '-I${SYSROOT}/usr/include/aarch64-linux-gnu', '-I${SYSROOT}/usr/include']" \
+  "c_link_args = ['-L${SYSROOT}/usr/lib/aarch64-linux-gnu', '-L${SYSROOT}/lib/aarch64-linux-gnu', '-Wl,--allow-shlib-undefined']" \
+  "cpp_link_args = ['-L${SYSROOT}/usr/lib/aarch64-linux-gnu', '-L${SYSROOT}/lib/aarch64-linux-gnu', '-Wl,--allow-shlib-undefined']" \
+  '[host_machine]' \
+  "system = 'linux'" \
+  "cpu_family = 'aarch64'" \
+  "cpu = 'aarch64'" \
+  "endian = 'little'" \
+  > /opt/cross-aarch64.txt
+
+WORKDIR /opt/rpicam-apps
+# Build recipe (validated v1.12.0 cross-build):
+#   meson setup build --cross-file /opt/cross-aarch64.txt \
+#     -Denable_libav=disabled -Denable_drm=disabled -Denable_egl=disabled \
+#     -Denable_qt=disabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
+#   ninja -C build apps/rpicam-vid      # NOTE target is 'apps/rpicam-vid', not 'rpicam-vid'
+# Produces: build/apps/rpicam-vid (arm64 PIE) + build/librpicam_app.so.1.12.0 (arm64).
+# The cross file uses -Wl,--allow-shlib-undefined so any sysroot .so's OWN transitive
+# deps (e.g. libcamera -> libpisp/libdw/elfutils; libgnutls/libglib sub-deps) need not
+# be staged in the sysroot -- they resolve at runtime on the Pi, which has them all.
+# It does NOT mask undefined symbols in our own object files (only shared-lib deps).
+# c_args/cpp_args carry -mcpu=cortex-a53 to tune codegen for the Pi Zero 2 W's
+# A53 cores (BCM2710, ARMv8-A). rpicam-apps already builds -O3 (its meson.build
+# default_options buildtype=release/optimization=3); NEON is mandatory/auto on
+# aarch64 so no -mfpu needed. The H.264 encode is on the VPU, so this only tunes
+# userspace glue -- a small, free win. Retune (or drop to generic) for other Pis.

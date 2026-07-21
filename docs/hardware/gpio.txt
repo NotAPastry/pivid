@@ -1,0 +1,12 @@
+RPi Pin#8 TXD0 connected to header for serial connection with flight controller
+RPi Pin#10 RXD0 connected to header for serial connection with flight controller
+RPi Pin#11 GPIO17 connected to LR2021 Pin#14 RST
+RPi Pin#13 GPIO27 connected to LR2021 Pin#15 DIO9
+RPi Pin#15 GPIO22 connected to LR2021 Pin#7 BUSY
+RPi Pin#19 SPI_MOSI connected to LR2021 Pin#4 MOSI
+RPi Pin#21 SPI_MISO connected to LR2021 Pin#3 MISO
+RPi Pin#23 SPI_CLK connected to LR2021 Pin#5 SCK
+RPi Pin#24 SPI_CE0 connected to LR2021 Pin#6 NSS
+RPi Pin#29 GPIO05 connected to LED for showing transmit status. This LED should be off when there is no transmission and blinking slowly when the video stream is received or transmitted.
+RPi Pin#31 GPIO06 connected to LED for showing bind between transmitter and receiver status. This LED should be on when transmitter and receiver have completed the binding phase. It should blink slowly when binding phase is in progress with existing key. It should blink rapidly when button was pressed and new binding phrase is being exchanged.
+RPi Pin#33 GPIO13 connected to button that starts bind procedure. After longer press of this button on both transmitter and receiver the modules will exchange new random binding phrase and write it in settings.

@@ -1,0 +1,10 @@
+obj-m := lr2021.o
+# Multi-file module rule: the obj-m name (lr2021.o -> lr2021.ko) MUST NOT
+# match any source file's compiled object, or Kbuild's linker step gets
+# "input file is the same as output file". So the main C file is named
+# lr2021_core.c, not lr2021.c.
+lr2021-objs := lr2021_core.o lr2021_ring.o lr2021_spi.o lr2021_tx.o lr2021_irq.o lr2021_init.o lr2021_wedge.o
+
+# $(src) is the absolute path to this directory at build time.
+# common/ holds the uapi header (radio_ioctl.h) shared with userspace.
+ccflags-y := -I$(src)/../../common -Wall -Wextra

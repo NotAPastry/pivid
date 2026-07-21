@@ -1,0 +1,64 @@
+/*
+ * lr2021-overlay.dts — instantiate the LR2021 radio on the RPi spi0.0 bus.
+ *
+ * Loading lr2021.ko alone is necessary but not sufficient: the driver's
+ * spi_driver.probe() only fires when the kernel's SPI subsystem sees a
+ * device whose `compatible` string matches "pivid,lr2021" on the right
+ * bus. On the Raspberry Pi, devices on spi0.0 are declared via a
+ * device-tree overlay (.dtbo) loaded by the firmware at boot.
+ *
+ * Build:   make overlay   -> bin/lr2021.dtbo   (dtc is in pivid-builder)
+ * Install: scripts/deploy.sh copies the .dtbo to /boot/firmware/overlays/
+ *          and appends `dtoverlay=lr2021` to /boot/firmware/config.txt.
+ *          One reboot is required on first install.
+ *
+ * Hardware map (also docs/hardware/gpio.txt, project_pivid_v2_1.md):
+ *   GPIO17  NRESET  (active-low; driver pulses LOW->HIGH to reset)
+ *   GPIO22  BUSY    (active-high input; LOW = ready)
+ *   GPIO27  DIO9    (active-high input + rising-edge IRQ)
+ *
+ * GPIO descriptor names ("reset", "busy", "dio9") must match the strings
+ * used in devm_gpiod_get(&spi->dev, "<name>", ...) calls in
+ * drivers/lr2021/lr2021_core.c.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2835";   /* matches BCM2710A1 / Pi Zero 2W as well */
+
+    fragment@0 {
+        target = <&spi0>;
+        __overlay__ {
+            status = "okay";
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            /* Disable the default spidev on CE0 — we own this chip-select.
+             * `reg = <0>;` silences dtc's `unit_address_vs_reg`/`spi_bus_reg`
+             * warnings; the residual `unique_unit_address` warning is
+             * unavoidable for the standard "disable spidev, enable our
+             * device" pattern (both nodes share CS0). */
+            spidev@0 { reg = <0>; status = "disabled"; };
+
+            lr2021: lr2021@0 {
+                compatible = "pivid,lr2021";
+                reg = <0>;                          /* CE0 */
+                spi-max-frequency = <16000000>;     /* 16 MHz, per LR2021_SPI_HZ */
+
+                /* GPIO bank 0 = BCM numbering. Flags: 1 = ACTIVE_LOW,
+                 * 0 = ACTIVE_HIGH (see <dt-bindings/gpio/gpio.h>). */
+                reset-gpios = <&gpio 17 1>;   /* NRESET, active-low  */
+                busy-gpios  = <&gpio 22 0>;   /* BUSY,   active-high */
+                dio9-gpios  = <&gpio 27 0>;   /* DIO9,   active-high */
+
+                /* DIO9 rising-edge interrupt. The driver requests this via
+                 * gpiod_to_irq(dev->dio9) in lr2021_core.c — declaring it
+                 * here lets the GPIO controller wire the IRQ at probe time. */
+                interrupt-parent = <&gpio>;
+                interrupts = <27 1>;          /* IRQ_TYPE_EDGE_RISING */
+            };
+        };
+    };
+};

@@ -1,0 +1,39 @@
+[Unit]
+Description=PiVid caster (video/telemetry distribution hub)
+# Deliberately NO ConditionPathExists=/dev/radio0: the caster never opens the
+# radio. It must run even when the radio is absent so a local or remote
+# pivid-player can subscribe and the dashboard's forwarding toggle works.
+#
+# Deliberately NOT ordered after network.target either (removed 2026-07-21).
+# On this DietPi image network.target is gated by ifup@wlan0.service, which is
+# Before=network.target and runs wpa_supplicant association + dhclient
+# SYNCHRONOUSLY under TimeoutStartSec=5min. Measured on pivid-rx with WiFi
+# working: ifup@wlan0 took 60.2s, so network.target -- and therefore this unit,
+# and therefore pivid-player, which is After= us -- landed at 65.8s while
+# pivid-rx (the radio) had been up since 4.8s. With no AP in range ifup blocks
+# to its full 5-minute timeout, i.e. a black HDMI screen for ~5 minutes on a
+# receiver whose entire video path (rx -> caster -> player) is LOOPBACK ONLY.
+#
+# Nothing here needs the network to exist at start: the ingest sockets bind
+# 127.0.0.1, ctrl_fd binds INADDR_ANY (a wildcard bind is not tied to an
+# interface and covers interfaces created later), and fwd_fd is deliberately
+# left UNBOUND so the kernel picks source address + egress interface per
+# sendto() from the routing table as it is at send time. mDNS registers with
+# AVAHI_IF_UNSPEC via an AVAHI_CLIENT_NO_FAIL client that (re)publishes from
+# its S_RUNNING callback, so avahi-daemon does the interface tracking -- it
+# already demonstrably starts with loopback only and adds wlan0 ~59s later on
+# every boot. And After=network.target never implied connectivity anyway
+# (that is network-online.target): when ifup times out, network.target
+# activates regardless, so a no-IP start was ALREADY reachable.
+# Same reasoning as pivid-config-agent.service; see the note there.
+
+[Service]
+Type=exec
+ExecStart=/opt/pivid/pivid-caster --config /opt/pivid/pivid.conf
+Restart=on-failure
+RestartSec=2s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
